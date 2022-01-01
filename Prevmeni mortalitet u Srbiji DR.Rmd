@@ -114,9 +114,10 @@ umrli %>% group_by(Godina.materijala) %>% summarise(sum(Avoidable))
 
 ```
 
-## Including Plots
+## Dodavanje podatka o broju stanovnika i računanje pokazatelja YPLL
+U prvomd delu se učitavaju podaci o populaciji koji se mogu preuzeti sa portala otvorenih podataka RZS.
+Takođe je U ovom delu je dato računanje pokazatelja izgubljenih godina potencijalnog života.
 
-You can also embed plots, for example:
 
 ```{r pressure, echo=FALSE}
 umrli <- read.xlsx("umrli15-20Avoidable.xlsx")
