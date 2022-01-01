@@ -1,0 +1,412 @@
+---
+title: "Prevremeni mortalitet u Srbiji"
+author: "Marko Galjak"
+date: "1/1/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R kod korišćen za sređivanje podataka
+U doktrorskoj diesrtaciji su korišćeni detaljni podaci o smrti u Srbiji za 6 godina od 2015. do 2020. godine
+Datoteka za svaku godinu ima više od 80.000 redova podataka jer su podaci dati po polu, starosti, opštini i tačnom (četvroznačnom) uzroku smrti.
+U pripremi podatka prvo ih objedinjujemo u jedan veliki dataframe i nakon toga svaki red svrtstavamo po kategorijama Međunarodne kategorizacije bolesti i prema tome da li su uzroci smrti oni koji se mogu izbeći, preventabilni ili predupredivi.
+
+```{r data_consolidation}
+require(tidyverse)
+require(iterators)
+require(openxlsx)
+
+#Učitavamo datoteke 
+
+umrli15<- read.xlsx("RZS/Umrli_2015.xlsx")
+umrli16<- read.xlsx("RZS/Umrli_2016.xlsx")
+umrli17<- read.xlsx("RZS/Umrli_2017.xlsx")
+umrli19<- read.xlsx("RZS/Umrli_2019.xlsx")
+umrli18<- read.xlsx("RZS/Umrli_2018.xlsx")
+umrli20<- read.xlsx("RZS/Umrli_2020.xlsx")
+
+colnames(umrli15)[2] <- "Opstina"
+colnames(umrli16)[2] <- "Opstina"
+colnames(umrli17)[2] <- "Opstina"
+colnames(umrli18)[2] <- "Opstina"
+colnames(umrli19)[2] <- "Opstina"
+colnames(umrli20)[2] <- "Opstina"
+
+umrli<- rbind(
+      umrli15,
+      umrli16,
+      umrli17,
+      umrli18,
+      umrli19,
+      umrli20
+      )
+
+rm(list = c("umrli15","umrli16","umrli17","umrli18","umrli19","umrli20"))
+d <- as.data.frame(read.csv(file = "Mortalty Coding/Diagnosis2.txt",sep = "\t", quote = '""', header = F,stringsAsFactors = F, encoding = "UTF-8"))
+d <- d[,1:5]
+colnames(d) <- c("Chapter", "List", "Cause", "Title", "TilteSR")
+d <- d[d$List==103,]
+
+ch <- as.data.frame(read.csv(file = "Mortalty Coding/CodingChapters2.txt",sep = "\t", quote = '""', header = F, stringsAsFactors = F,encoding = "UTF-8"))
+colnames(ch) <- c("Chapeter", "List", "Title", "TilteSR","TilteSRCyr")
+ch <- ch[ch$List==103,c(1,3)]
+colnames(ch)[1] <- "Chapter"
+amenmort<- read_csv(file ="Mortalty Coding/amort.csv")
+amenmort$Cause <- gsub(pattern = "[.]", replacement = "", x = amenmort$Cause)
+
+ages<- list(
+  `0-14`= 0:14,
+  `0-19`= 0:19,
+  `0-44`= 0:44,
+  `0-74`= 0:74,
+  `1-14`= 1:14,
+  All = 1:150)
+
+MortClassifier <-
+  function(dataset = NULL,
+           cause = NULL,
+           age = NULL,
+           ages = NULL,
+           i=NULL) {
+    if (nrow(amenmort[amenmort$Cause == cause, ]) != 0) {
+      if (age %in% unlist(ages[as.character(amenmort[amenmort$Cause == cause, "AGE"])])) {
+        return(cbind(data.frame(rn=i),amenmort[amenmort$Cause == cause, c(5, 6)]))
+      }
+      
+    } else{
+      if (nrow(amenmort[amenmort$Cause == substring(cause, 1, 3), ]) != 0) {
+        if (age %in% unlist(ages[as.character(amenmort[amenmort$Cause == substring(cause, 1, 3), "AGE"])])) {
+          return(cbind(data.frame(rn=i),amenmort[amenmort$Cause == substring(cause, 1, 3), c(5, 6)]))
+        }
+      }
+    }
+    return(data.frame(rn=i,Amenable = 0, Preventable = 0))
+  }
+
+
+require(foreach)
+library(doParallel)
+
+cl <- makeCluster(11)
+registerDoParallel(cl)
+
+s2<- data.frame(rn=1:nrow(umrli),Amenable = NA, Preventable = NA)
+for (i in 1:nrow(umrli)) {
+  s2[i,] <- MortClassifier(dataset = amenmort, cause=umrli$Uzrok.smrti[i],age = umrli$Starost[i], ages=ages,i=i )
+
+}
+
+  umrli<- cbind(umrli, s2)
+  umrli$rn <- NULL
+  umrli$Avoidable <- umrli$Preventable+ umrli$Amenable
+  umrli$Avoidable <- ifelse(umrli$Avoidable>0, 1,0)
+
+  write.xlsx(umrli, "umrli15-20Avoidable.xlsx") 
+  
+umrli %>% group_by(Godina.materijala) %>% summarise(sum(Preventable))
+umrli %>% group_by(Godina.materijala) %>% summarise(sum(Amenable))
+umrli %>% group_by(Godina.materijala) %>% summarise(sum(Avoidable))
+
+
+
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+umrli <- read.xlsx("umrli15-20Avoidable.xlsx")
+pop <- read.csv("RZS/Populacija.csv", sep=";")
+
+YPLL_Age <- 65
+YPLL_Age <- 75
+
+YPLL_Opstine_Covid<- left_join(
+  umrli %>% filter(
+    Godina.materijala == 2020,
+    Starost < YPLL_Age,
+    Uzrok.smrti %in% c("U071", "U072")
+  ) %>%
+    mutate(YPLL = (YPLL_Age - Starost) * Broj.pojava) %>% group_by(Opstina) %>% summarise(YPLL = sum(YPLL))
+  ,
+  pop %>% filter(god == 2020, nPol == "Ukupno", !IDStarost %in% c("0","V85")) %>% mutate(Starost=as.integer(IDStarost)) %>% filter(Starost<75) %>% group_by(Opstina=IDTer) %>% summarise(Pop=sum(vrednost))
+  
+) %>% mutate(YPLLR=YPLL/Pop*100000)
+
+YPLL_Opstine_NonCovid<- left_join(
+  umrli %>% filter(
+    Godina.materijala == 2020,
+    Starost < YPLL_Age,
+    !Uzrok.smrti %in% c("U071", "U072")
+  ) %>%
+    mutate(YPLL = (YPLL_Age - Starost) * Broj.pojava) %>% group_by(Opstina) %>% summarise(YPLL = sum(YPLL))
+  ,
+  pop %>% filter(god == 2020, nPol == "Ukupno", !IDStarost %in% c("0","V85")) %>% mutate(Starost=as.integer(IDStarost)) %>% filter(Starost<75) %>% group_by(Opstina=IDTer) %>% summarise(Pop=sum(vrednost))
+  
+) %>% mutate(YPLLR=YPLL/Pop*100000)
+
+YPLL_Opstine_Total<- left_join(
+  umrli %>% filter(
+    Godina.materijala == 2020,
+    Starost < YPLL_Age
+  ) %>%
+    mutate(YPLL = (YPLL_Age - Starost) * Broj.pojava) %>% group_by(Opstina) %>% summarise(YPLL = sum(YPLL))
+  ,
+  pop %>% filter(god == 2020, nPol == "Ukupno", !IDStarost %in% c("0","V85")) %>% mutate(Starost=as.integer(IDStarost)) %>% filter(Starost<75) %>% group_by(Opstina=IDTer) %>% summarise(Pop=sum(vrednost))
+  
+) %>% mutate(YPLLR=YPLL/Pop*100000)
+#YPLL_Opstine$Opstina <- as.integer(YPLL_Opstine$Opstina)
+
+SRMAP<- readShapePoly("SRdrMap/Serbia.shp")
+SRMAP<- fortify(SRMAP, region = "code")
+SRMAP$region <- SRMAP$id
+Kosovo<-geojson_read("Kosovo/Kosovo.geojson",  what = "sp")
+
+plot_YPLL_Opstine_Total <- ggplot(data=left_join(SRMAP, YPLL_Opstine_Total, by=c("region"="Opstina")), aes(x=long, y=lat))+
+  geom_map(map = SRMAP,aes(map_id=id, x=long, y=lat,fill=round(YPLLR,1), group=group ),color="#808080",na.rm = F)+
+  coord_map("mercator")+
+  #scale_fill_con(type = "div", palette = "RdYlGn", direction = -1)+
+  #scale_fill_gradient(low = "#FFFFFF", high = "#000000",na.value = "#FFFFFF")+
+  scale_fill_distiller(palette = "YlOrRd",direction = 1,na.value = "#BDBDBD")+
+  guides(fill = guide_colorsteps(show.limits = T,ticks = T,even.steps = T,title="Years per 100 000\nof people under 75"))+
+  #labs(caption="© OpenStreetMap contributors")+ 
+  # guides(fill=guide_legend(title = "Godine potencijalnog izgubljenog života"))+
+  theme_tufte() + theme(legend.position=c(.80,.85),text=element_text(size=10,  family="TT Arial"),legend.title=element_text(margin = margin(b = 10, unit = "pt"))) +
+  xlab(NULL)+ylab(NULL)+ theme(axis.title.x=element_blank(),
+                               axis.text.x=element_blank(),
+                               axis.ticks.x=element_blank(),axis.title.y=element_blank(),
+                               axis.text.y=element_blank(),
+                               axis.ticks.y=element_blank())+
+  geom_polygon(data = Kosovo, aes(x = long, y =  lat, group = group), color = "#808080", alpha = 0, linetype = 1)+
+labs(caption="© OpenStreetMap contributors")
+
+
+
+plot_YPLL_Opstine_Covid <- ggplot(data=left_join(SRMAP, YPLL_Opstine_Covid, by=c("region"="Opstina")), aes(x=long, y=lat))+
+  geom_map(map = SRMAP,aes(map_id=id, x=long, y=lat,fill=round(YPLLR,1), group=group ),color="#808080",na.rm = F)+
+  coord_map("mercator")+
+  #scale_fill_con(type = "div", palette = "RdYlGn", direction = -1)+
+  #scale_fill_gradient(low = "#FFFFFF", high = "#000000",na.value = "#FFFFFF")+
+  scale_fill_distiller(palette = "Oranges",direction = 1,na.value = "#BDBDBD")+
+  guides(fill = guide_colorsteps(show.limits = T,ticks = T,even.steps = T,title="Years per 100 000\nof people under 75"))+
+  #labs(caption="© OpenStreetMap contributors")+ 
+  # guides(fill=guide_legend(title = "Godine potencijalnog izgubljenog života"))+
+  theme_tufte() + theme(legend.position=c(.80,.85),text=element_text(size=10,  family="TT Arial"),legend.title=element_text(margin = margin(b = 10, unit = "pt"))) +
+  xlab(NULL)+ylab(NULL)+ theme(axis.title.x=element_blank(),
+                               axis.text.x=element_blank(),
+                               axis.ticks.x=element_blank(),axis.title.y=element_blank(),
+                               axis.text.y=element_blank(),
+                               axis.ticks.y=element_blank())+
+  geom_polygon(data = Kosovo, aes(x = long, y =  lat, group = group), color = "#808080", alpha = 0, linetype = 1)+
+  labs(caption="© OpenStreetMap contributors")
+
+plot_YPLL_Opstine_NonCovid<- ggplot(data=left_join(SRMAP, YPLL_Opstine_NonCovid, by=c("region"="Opstina")), aes(x=long, y=lat))+
+  geom_map(map = SRMAP,aes(map_id=id, x=long, y=lat,fill=round(YPLLR,1), group=group ),color="#808080",na.rm = F)+
+  coord_map("mercator")+
+  #scale_fill_con(type = "div", palette = "RdYlGn", direction = -1)+
+  #scale_fill_gradient(low = "#FFFFFF", high = "#000000",na.value = "#FFFFFF")+
+  scale_fill_distiller(palette = "Reds",direction = 1)+
+  guides(fill = guide_colorsteps(show.limits = T,ticks = T,even.steps = T,title="Years per 100 000\nof people under 75"))+
+  #labs(caption="© OpenStreetMap contributors")+ 
+ #guides(fill=guide_legend()+
+  theme_tufte() + theme(legend.position=c(.80,.85),text=element_text(size=10,  family="TT Arial"),legend.title=element_text(margin = margin(b = 10, unit = "pt"))) +
+  xlab(NULL)+ylab(NULL)+ theme(axis.title.x=element_blank(),
+                               axis.text.x=element_blank(),
+                               axis.ticks.x=element_blank(),axis.title.y=element_blank(),
+                               axis.text.y=element_blank(),
+                               axis.ticks.y=element_blank())+
+  geom_polygon(data = Kosovo, aes(x = long, y =  lat, group = group), color = "#808080", alpha = 0, linetype = 1)+
+  labs(caption="© OpenStreetMap contributors")
+
+ggsave(plot_YPLL_Opstine_Total,filename = "figure2.eps", units = "mm", width = 116)
+ggsave(plot_YPLL_Opstine_Total,filename = "figure2.png", units = "mm", width = 116)
+ggsave(plot_YPLL_Opstine_Total,filename = "figure2.jpg", units = "mm", width = 116, dpi = 600)
+
+ggsave(plot_YPLL_Opstine_Covid,filename = "figure3.eps", units = "mm", width = 116)
+ggsave(plot_YPLL_Opstine_Covid,filename = "figure3.png", units = "mm", width = 116)
+ggsave(plot_YPLL_Opstine_Covid,filename = "figure3.jpg", units = "mm", width = 116, dpi = 600)
+
+ggsave(plot_YPLL_Opstine_NonCovid,filename = "figure4.eps", units = "mm", width = 116)
+ggsave(plot_YPLL_Opstine_NonCovid,filename = "figure4.png", units = "mm", width = 116)
+ggsave(plot_YPLL_Opstine_NonCovid,filename = "figure4.jpg", units = "mm", width = 116, dpi = 600)
+
+
+#Populacija Srbije
+popsr2020<-pop %>% filter(god == 2020, nPol == "Ukupno", !IDStarost %in% c("0","V85"), IDTer=="RS") %>% mutate(Starost=as.integer(IDStarost)) %>% filter(Starost<75) %>% group_by() %>% summarise(Pop=sum(vrednost))
+popsr2019<-pop %>% filter(god == 2019, nPol == "Ukupno", !IDStarost %in% c("0","V85"), IDTer=="RS") %>% mutate(Starost=as.integer(IDStarost)) %>% filter(Starost<75) %>% group_by() %>% summarise(Pop=sum(vrednost))
+popsr2018<-pop %>% filter(god == 2018, nPol == "Ukupno", !IDStarost %in% c("0","V85"), IDTer=="RS") %>% mutate(Starost=as.integer(IDStarost)) %>% filter(Starost<75) %>% group_by() %>% summarise(Pop=sum(vrednost))
+popsr2017<-pop %>% filter(god == 2017, nPol == "Ukupno", !IDStarost %in% c("0","V85"), IDTer=="RS") %>% mutate(Starost=as.integer(IDStarost)) %>% filter(Starost<75) %>% group_by() %>% summarise(Pop=sum(vrednost))
+
+popsr2020m<-pop %>% filter(god == 2020,  !IDStarost %in% c("0","V85"), IDTer=="RS", IDPol==1) %>% mutate(Starost=as.integer(IDStarost)) %>% filter(Starost<75) %>% group_by() %>% summarise(Pop=sum(vrednost))
+popsr2020f<-pop %>% filter(god == 2020, !IDStarost %in% c("0","V85"), IDTer=="RS", IDPol==2) %>% mutate(Starost=as.integer(IDStarost)) %>% filter(Starost<75) %>% group_by() %>% summarise(Pop=sum(vrednost))
+
+
+
+YPPL2020_C<- umrli %>% filter(
+  Godina.materijala == 2020,
+  Starost < YPLL_Age,
+  Uzrok.smrti %in% c("U071", "U072")
+) %>%
+  mutate(YPLL = (YPLL_Age - Starost) * Broj.pojava) %>% group_by() %>% summarise(YPLL = sum(YPLL)) * 100000/popsr2020
+
+
+YPPL2020_O <- umrli %>% filter(
+  Godina.materijala == 2020,
+  Starost < YPLL_Age,!Uzrok.smrti %in% c("U071", "U072"), Avoidable!=1) %>%
+  mutate(YPLL = (YPLL_Age - Starost) * Broj.pojava) %>% group_by() %>% summarise(YPLL = sum(YPLL))* 100000/popsr2020
+
+YPPL2020_Avoidable <- umrli %>% filter(
+  Godina.materijala == 2020,
+  Starost < YPLL_Age,Avoidable==1) %>%
+  mutate(YPLL = (YPLL_Age - Starost) * Broj.pojava) %>% group_by() %>% summarise(YPLL = sum(YPLL))* 100000/popsr2020
+
+umrli %>% filter(
+  Godina.materijala == 2020,
+  Starost < YPLL_Age,
+) %>%
+  mutate(YPLL = (YPLL_Age - Starost) * Broj.pojava) %>% group_by() %>% summarise(YPLL = sum(YPLL))* 100000/popsr2020
+
+
+YPPL2019 <- umrli %>% filter(
+  Godina.materijala == 2019,
+  Starost < YPLL_Age, Avoidable!=1
+) %>%
+  mutate(YPLL = (YPLL_Age - Starost) * Broj.pojava) %>% group_by() %>% summarise(YPLL = sum(YPLL))* 100000/popsr2019
+
+YPPL2019_Avoidable<- umrli %>% filter(
+  Godina.materijala == 2019,
+  Starost < YPLL_Age,Avoidable==1
+) %>%
+  mutate(YPLL = (YPLL_Age - Starost) * Broj.pojava) %>% group_by() %>% summarise(YPLL = sum(YPLL))* 100000/popsr2019
+
+
+YPPL2018 <- umrli %>% filter(
+  Godina.materijala == 2018,
+  Starost < YPLL_Age, Avoidable!=1
+) %>%
+  mutate(YPLL = (YPLL_Age - Starost) * Broj.pojava) %>% group_by() %>% summarise(YPLL = sum(YPLL))* 100000/popsr2018
+
+YPPL2018_Avoidable <- umrli %>% filter(
+  Godina.materijala == 2018,
+  Starost < YPLL_Age,Avoidable==1
+) %>%
+  mutate(YPLL = (YPLL_Age - Starost) * Broj.pojava) %>% group_by() %>% summarise(YPLL = sum(YPLL))* 100000/popsr2018
+
+
+YPPL2017 <- umrli %>% filter(
+  Godina.materijala == 2017,
+  Starost < YPLL_Age, Avoidable!=1
+) %>%
+  mutate(YPLL = (YPLL_Age - Starost) * Broj.pojava) %>% group_by() %>% summarise(YPLL = sum(YPLL))* 100000/popsr2017
+
+YPPL2017_Avoidable<- umrli %>% filter(
+  Godina.materijala == 2017,
+  Starost < YPLL_Age, Avoidable==1
+) %>%
+  mutate(YPLL = (YPLL_Age - Starost) * Broj.pojava) %>% group_by() %>% summarise(YPLL = sum(YPLL))* 100000/popsr2017
+
+
+
+
+umrli %>% filter(
+  Godina.materijala == 2020,
+  Uzrok.smrti %in% c("U071", "U072")
+) %>% filter((Pol=="1" & Starost<65) |(Pol=="2" & Starost<63) )
+  mutate(YPLL = (YPLL_Age - Starost) * Broj.pojava) %>% group_by() %>% summarise(YPLL = sum(YPLL))
+
+
+  covid_bar_plot <-
+    data.frame(
+      Year = c(2017,2017, 2018,2018,2019,2019, 2020,2020, 2020),
+      Type = c("Other","Avoidable", "Other", "Avoidable", "Other", "Avoidable", "SARS-CoV-2", "Avoidable","Other"),
+      YPLL = unname(c(
+        unlist(YPPL2017),
+        unlist(YPPL2017_Avoidable),
+        unlist(YPPL2018),
+        unlist(YPPL2018_Avoidable),
+        unlist(YPPL2019),
+        unlist(YPPL2019_Avoidable),
+        unlist(YPPL2020_C),
+        unlist(YPPL2020_Avoidable),
+        unlist(YPPL2020_O)
+      ))
+    )
+  covid_bar_plot$Type <- factor(covid_bar_plot$Type, levels =c("SARS-CoV-2", "Other","Avoidable") )
+
+
+
+  fig2plos <-  ggplot(covid_bar_plot ,aes(x=Year, y=YPLL, fill=Type))+
+  geom_bar(position="stack", stat="identity")+ coord_flip()+
+  scale_fill_manual(values = c("#d95f02","#1b9e77", "#7570b3" ))+# c( "#abdda4", "#2b83ba", "#d7191c"))+
+  #guides(NULL)+
+  theme_tufte()+ #theme(legend.position = "none",text=element_text(size=10,  family="TT Arial"))+
+    theme(text=element_text(size=10,  family="TT Arial"))+
+     scale_y_continuous(breaks = c(2000, 4000, 6000, 8000, 10000))+
+  #annotate("text", x=2020, y=9150,label="COVID-19", size=2.5, angle = 90, color="black" )+
+     geom_hline(yintercept =c(2000, 4000, 6000, 8000, 10000),lwd=1, color="white")+
+  ylab("YPLL per 100 000 of people under 75")+
+      xlab(NULL)
+  fig2plos
+   
+    ggsave(fig2plos,filename = "Figure2plos.svg", units = "mm", width = 175, height = 50)
+    ggsave(fig2plos,filename = "figure2plos.png", units = "mm", width = 175, height = 50)
+    ggsave(fig2plos,filename = "figure2plos.jpg", units = "mm", width = 175, height = 50, dpi = 600)
+    
+    
+    YPLL_Opstine_Covid %>% group_by() %>% summarise(CV=sd(YPLLR)/
+                                                      mean(YPLLR))
+    
+    YPLL_Opstine_NonCovid %>% group_by() %>% summarise(CV=sd(YPLLR)/
+                                                      mean(YPLLR))
+    
+    YPLL_Opstine_Total  %>%group_by() %>% summarise(CV=sd(YPLLR)/
+                                                         mean(YPLLR))
+    
+    
+    #CPL
+    
+    GDPPC2020 <- 7742
+    
+  YPPLL<-   
+    umrli %>% filter(
+      Godina.materijala == 2020,
+      Uzrok.smrti %in% c("U071", "U072")
+    ) %>% filter((Pol=="2" & Starost<15)) %>% group_by() %>%  summarise(sum(Broj.pojava))*(63-15)+
+    umrli %>% filter(
+      Godina.materijala == 2020,
+      Uzrok.smrti %in% c("U071", "U072")
+    ) %>% filter((Pol=="1" & Starost<15)) %>% group_by() %>%  summarise(sum(Broj.pojava))*(65-15)+
+    
+
+    umrli %>% filter(
+      Godina.materijala == 2020,
+      Uzrok.smrti %in% c("U071", "U072")
+    ) %>% filter((Pol=="1" & Starost>=15 & Starost<65)) %>%  mutate(YPLL = (YPLL_Age - Starost) * Broj.pojava) %>% group_by() %>% summarise(YPLL = sum(YPLL))+
+    
+    umrli %>% filter(
+      Godina.materijala == 2020,
+      Uzrok.smrti %in% c("U071", "U072")
+    ) %>% filter((Pol=="2" & Starost>=15 & Starost<63)) %>%  mutate(YPLL = (YPLL_Age - Starost) * Broj.pojava) %>% group_by() %>% summarise(YPLL = sum(YPLL))
+    
+    #
+    CPL= YPPLL*GDPPC2020
+    
+    
+    #Correlation test
+    forcor<- left_join(YPLL_Opstine_NonCovid, YPLL_Opstine_Covid, by="Opstina")
+cor.test(forcor$YPLLR.x, forcor$YPLLR.y, method="spearman") 
+
+
+
+umrli %>% filter(
+  Godina.materijala == 2020,
+  Starost < 999,
+  Uzrok.smrti %in% c("U071", "U072")
+) %>% group_by(Starost) %>% summarise(Deaths=sum(Broj.pojava)) %>% ggplot() + geom_line(aes(x=Starost, y=Deaths))
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
