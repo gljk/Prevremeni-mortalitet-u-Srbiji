@@ -439,7 +439,7 @@ lw <- nb2listw(nb, style="W", zero.policy=TRUE)
   x<- left_join(data.frame(Opstina=as.character(map@data$code)), motality_dataframe, by="Opstina")
 locmor<- localmoran(unname(unlist(c(x[,variable]))),lw,p.adjust.method = "bonferroni")
 locmor<- as.data.frame(locmor)
-return(left_join(foritfied_map, data.frame(Opstina=as.character(map@data$code), Ii=locmor$Ii, Pat=ifelse(locmor$`Pr(z != E(Ii))` < 0.05,"stripe", "none")), by=c("region"="Opstina")))
+return(left_join(foritfied_map, data.frame(Opstina=as.character(map@data$code), Ii=locmor$Ii, Pat=ifelse(locmor$`Pr(z != E(Ii))` < 0.1,"circle", "none")), by=c("region"="Opstina")) %>% mutate(Pat= ifelse(Ii>0 & Pat=="circle","stripe", Pat)))
 }
 
 
@@ -447,7 +447,7 @@ getMorans <- function(map=NULL, mortality_dataframe=NULL, variable) {
     nb<- poly2nb(map, queen=TRUE)
 lw <- nb2listw(nb, style="W", zero.policy=TRUE)
 x<- left_join(data.frame(Opstina=as.character(map@data$code)), mortality_dataframe, by="Opstina")
-moran.test(unname(unlist(c(x[,variable]))),lw)
+a <- moran.test(unname(unlist(c(x[,variable]))),lw)
 return(paste0("Moran's I: ",round(a$estimate[1],3)," (", scales::pvalue(a$p.value,accuracy = 0.0001,add_p = T),")"))
 }
 
@@ -480,8 +480,8 @@ built_map <- ggplot(data=left_join(foritfied_map, motality_dataframe, by=c("regi
   )
   if(save_map){
     
-ggsave(built_map,filename =  paste0(deparse(substitute(standardized_YPLL_Avoidable)),".png"), units = "mm", width = 175, dpi = 600)
-knitr::plot_crop(x = paste0(deparse(substitute(standardized_YPLL_Avoidable)),".png"))
+ggsave(built_map,filename =  paste0(deparse(substitute(motality_dataframe)),".png"), units = "mm", width = 175, dpi = 600)
+knitr::plot_crop(x = paste0(deparse(substitute(motality_dataframe)),".png"))
     
   }
   return(built_map)
@@ -490,11 +490,18 @@ knitr::plot_crop(x = paste0(deparse(substitute(standardized_YPLL_Avoidable)),".p
 
 
 #Avoidable standardized YPLL map
-aviod_stypll_map<- buildMap(map=Serbia,foritfied_map = SRMAP,motality_dataframe = standardized_YPLL_Avoidable, variable = "YPLLi",paleta="Reds")
+aviod_stypll_map<- buildMap(map=Serbia,foritfied_map = SRMAP,motality_dataframe = standardized_YPLL_Avoidable, variable = "YPLLi",paleta="OrRd")
 #Amenable  standardized YPLL map
-aviod_stypll_map<- buildMap(map=Serbia,foritfied_map = SRMAP,motality_dataframe = standardized_YPLL_Amenable, variable = "YPLLi",paleta="Purples")
+aviod_stypll_map<- buildMap(map=Serbia,foritfied_map = SRMAP,motality_dataframe = standardized_YPLL_Amenable, variable = "YPLLi",paleta="Reds")
 #Preventable standardized YPLL map
-aviod_stypll_map<- buildMap(map=Serbia,foritfied_map = SRMAP,motality_dataframe = standardized_YPLL_Preventable, variable = "YPLLi",paleta="Greens")
+aviod_stypll_map<- buildMap(map=Serbia,foritfied_map = SRMAP,motality_dataframe = standardized_YPLL_Preventable, variable = "YPLLi",paleta="Oranges")
+
+#Overall standardized YPLL map
+aviod_stypll_map<- buildMap(map=Serbia,foritfied_map = SRMAP,motality_dataframe = standardized_YPLL_TOTAL, variable = "YPLLi",paleta="BuPu")
+#Covid standardized YPLL map
+aviod_stypll_map<- buildMap(map=Serbia,foritfied_map = SRMAP,motality_dataframe = standardized_YPLL_Covid, variable = "YPLLi",paleta="Purples")
+#NoNCovid standardized YPLL map
+aviod_stypll_map<- buildMap(map=Serbia,foritfied_map = SRMAP,motality_dataframe = standardized_YPLL_NoN_Covid, variable = "YPLLi",paleta="Blues")
 
 
 
@@ -507,6 +514,72 @@ TestCorAvoidArea<- left_join(Serbia@data %>% mutate(code=as.character(code)), YP
 
 cor.test(TestCorAvoidArea$Pop/TestCorAvoidArea$area,TestCorAvoidArea$YPLLR,method = "spearman")
 
+
+
+```
+```{r avoidable_trend, echo=FALSE}
+#Gender
+popsr2020m<-pop %>% filter(god == 2020,  !IDStarost %in% c("0","V85"), IDTer=="RS", IDPol==1) %>% mutate(Starost=as.integer(IDStarost)) %>% filter(Starost<75) %>% group_by() %>% summarise(Pop=sum(vrednost))
+popsr2020f<-pop %>% filter(god == 2020, !IDStarost %in% c("0","V85"), IDTer=="RS", IDPol==2) %>% mutate(Starost=as.integer(IDStarost)) %>% filter(Starost<75) %>% group_by() %>% summarise(Pop=sum(vrednost))
+
+
+sex_avoidable_years<- rbind(
+left_join(
+pop %>% filter(!IDStarost %in% c("0","V85"), IDTer=="RS", god>=2015, IDPol!=0) %>% mutate(Starost=as.integer(IDStarost)) %>% filter(Starost<75) %>% group_by(Year=god,Sex=IDPol) %>% summarise(Pop=sum(vrednost)),
+
+umrli %>% filter(
+  Starost < YPLL_Age,
+  Avoidable==1,
+  #Uzrok.smrti %in% c("U071", "U072")
+) %>%
+  mutate(YPLL = (YPLL_Age - Starost) * Broj.pojava) %>% group_by(Sex=as.integer(Pol), Year=as.integer(Godina.materijala)) %>% summarise(YPLL = sum(YPLL))
+) %>% mutate(Cause="Avoidable"),
+
+left_join(
+  pop %>% filter(!IDStarost %in% c("0","V85"), IDTer=="RS", god>=2015, IDPol!=0) %>% mutate(Starost=as.integer(IDStarost)) %>% filter(Starost<75) %>% group_by(Year=god,Sex=IDPol) %>% summarise(Pop=sum(vrednost)),
+  umrli %>% filter(
+    Starost < YPLL_Age,
+    Avoidable!=1, !Uzrok.smrti %in% c("U071", "U072")
+  ) %>%
+    mutate(YPLL = (YPLL_Age - Starost) * Broj.pojava) %>% group_by(Sex=as.integer(Pol), Year=as.integer(Godina.materijala)) %>% summarise(YPLL = sum(YPLL)) %>% mutate(Cause="Other")
+),
+
+left_join(
+  pop %>% filter(!IDStarost %in% c("0","V85"), IDTer=="RS", god==2020, IDPol!=0) %>% mutate(Starost=as.integer(IDStarost)) %>% filter(Starost<75) %>% group_by(Year=god,Sex=IDPol) %>% summarise(Pop=sum(vrednost)),
+  umrli %>% filter(
+    Starost < YPLL_Age,
+    Uzrok.smrti %in% c("U071", "U072")
+  ) %>%
+    mutate(YPLL = (YPLL_Age - Starost) * Broj.pojava) %>% group_by(Sex=as.integer(Pol), Year=as.integer(Godina.materijala)) %>% summarise(YPLL = sum(YPLL)) %>% mutate(Cause="SARS-CoV-2")
+)
+) %>% mutate(YPLLR=YPLL/Pop*100000) 
+sex_avoidable_years$Cause <- factor(sex_avoidable_years$Cause, levels =c("SARS-CoV-2", "Other","Avoidable") )
+levels(sex_avoidable_years$Cause) <- "SARS-CoV-2", "Ostali", "Moguće izbeći")
+
+barwidth = 0.35
+plot_sex_years<- ggplot()+
+  geom_bar(data=sex_avoidable_years %>% filter(Sex==2),position="stack", stat="identity",aes(x=Year, y=YPLLR, fill=Cause),width = barwidth)+ 
+  geom_bar(data=sex_avoidable_years %>% filter(Sex==1),position="stack", stat="identity",aes(x=Year+barwidth+0.1, y=YPLLR, fill=Cause),width = barwidth)+
+  coord_flip()+
+  scale_fill_manual(values = c("#d95f02","#1b9e77", "#7570b3" ))+# c( "#abdda4", "#2b83ba", "#d7191c"))+
+  #guides(NULL)+
+  theme_tufte()+ #theme(legend.position = "none",text=element_text(size=10,  family="TT Arial"))+
+  theme(text=element_text(size=10,  family="TT Arial"), axis.ticks.y= element_blank(), axis.text.y = element_text(hjust=-0.05,vjust = -5,face = "bold", angle=90))+
+  annotate("text", x=c(2020, 2019, 2018, 2017,2016,2015), y=-150,label="Ž", size=3, color="black" )+
+  annotate("text", x=c(2020.5, 2019.5, 2018.5, 2017.5,2016.5,2015.5), y=-150,label="M", size=3, color="black" )+
+ # scale_y_continuous(breaks = c(2000, 4000, 6000, 8000, 10000))+
+  #annotate("text", x=2020, y=9150,label="COVID-19", size=2.5, angle = 90, color="black" )+
+  #geom_hline(yintercept =c(2000, 4000, 6000, 8000, 10000),lwd=1, color="white")+
+  ylab("YPLL na 100000 < 75")+
+  xlab(NULL)+
+  scale_y_continuous(breaks = seq(0, 12000, 2000))+
+  geom_hline(yintercept =seq(0, 12000, 2000), color="white")
+
+  plot_sex_years
+
+
+  ggsave(plot_sex_years,filename = "plot_sex_years.png", units = "mm", width = 175, height = 100, dpi = 600)
+  knitr::plot_crop(x = "plot_sex_years.png")
 
 
 ```
