@@ -925,6 +925,14 @@ buildMap <-
     variable = "YPLLi",
     paleta = "Blues"
   )
+  
+   buildMap(
+    map = Serbia,
+    foritfied_map = SRMAP,
+    motality_dataframe = standardized_YPLL_Amenable,
+    variable = "YPLLi",
+    paleta = "Reds"
+  )
 
 ```
 ```{r avoidable_trend, message=FALSE, warning=FALSE}
@@ -1100,5 +1108,13 @@ FindMedian <- function(x) {
 }
 
 
+
+```
+```{r airpolution, message=FALSE, warning=FALSE}
+library(raster)
+library(rasterVis)
+library(viridis)
+library(profmem)
+SerbiaPolution
 
 ```
