@@ -1088,6 +1088,16 @@ a <- 0:75
 return(a[which(abs(Diff)==min(abs(Diff)))])
 }
 
+FindMedian <- function(x) {
+  age <- 0:75
+  cs <- cumsum(x)
+  mid <- findInterval(max(cs)/2, cs)+1
+  ag <- age[mid]    
+  f <- x[mid]       
+  cs2 <- cs[mid - 1]          
+  half <- max(cs)/2
+  unname(ag + (half - cf2)/f )
+}
 
 
 
