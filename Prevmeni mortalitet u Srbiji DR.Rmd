@@ -203,12 +203,9 @@ knitr::kable(standpop)
 standpop$stpop <- standpop$stpop / 1000000
 
 #Kreiranje pondera za mlađe od 75 godina na osnovu standardne populacije koja ide do 85 godina.
-sum(standpop$stpop) - sum(standpop$stpop[1:75])
+
 standardpop75 <- standpop[1:75, ]
-standardpop75$stpop <-
-  (standpop$stpop[1:75] / sum(standpop$stpop[1:75]) * (sum(standpop$stpop) -
-                                                         sum(standpop$stpop[1:75]))) + standpop$stpop[1:75]
-standardpop75$stpop <- standardpop75$stpop / 1000000
+standardpop75$stpop <-(standpop$stpop[1:75] / sum(standpop$stpop[1:75]) * (sum(standpop$stpop) - sum(standpop$stpop[1:75]))) + standpop$stpop[1:75]
 colnames(standardpop75)[1] <- "Starost"
 
 #Definisanje referentnog godišta za računanje pokazatelja izgubljenih godina potencijalnog života
@@ -230,7 +227,7 @@ standardized_YPLL_Covid <- left_join(
     mutate(YPLL = ifelse(is.na(YPLL), 0, YPLL)) %>% mutate(YPLLR = YPLL /
                                                              Pop * 100000),
   standardpop75
-) %>% group_by(Opstina) %>% summarise(
+) %>% group_by(Opstina) %>% summarise( Median_AGE_YPLL=FindMedian(YPLL),
   YPLLi = sum(YPLLR * stpop, na.rm = T),
   YPLLR = sum(YPLL) / sum(Pop) * 100000,
   YPLL = sum(YPLL),
@@ -271,27 +268,27 @@ standardized_YPLL_TOTAL <- left_join(
     mutate(YPLL = ifelse(is.na(YPLL), 0, YPLL)) %>% mutate(YPLLR = YPLL /
                                                              Pop * 100000),
   standardpop75
-) %>% group_by(Opstina) %>% summarise(
+) %>% group_by(Opstina) %>% summarise( Median_AGE_YPLL=FindMedian(YPLL),
   YPLLi = sum(YPLLR * stpop, na.rm = T),
   YPLLR = sum(YPLL) / sum(Pop) * 100000,
   YPLL = sum(YPLL),
   Pop = sum(Pop)
 )
 
-#Računanje standardizovanog pokazatelja izgubljenih godina potencijalnog života umrlih 2019
+#Računanje standardizovanog pokazatelja izgubljenih godina potencijalnog života umrlih 2017-2019
 standardized_YPLL_TOTAL_2017_2019 <- left_join(
   left_join(
-    pop %>% filter(god %in% c(2017,2019, 2019) , nPol == "Ukupno",!IDStarost %in% c("0", "V85")) %>% mutate(Starost =
+    pop %>% filter(god %in% c(2017,2018, 2019) , nPol == "Ukupno",!IDStarost %in% c("0", "V85")) %>% mutate(Starost =
                                                                                              as.integer(IDStarost)) %>% filter(Starost < 75) %>% group_by(Opstina = IDTer, Starost) %>% summarise(Pop =
                                                                                                                                                                                                     sum(vrednost)),
-    umrli %>% filter(Godina.materijala %in% c(2017,2019, 2019) ,
+    umrli %>% filter(Godina.materijala %in% c(2017,2018, 2019) ,
                      Starost < YPLL_Age) %>%
       mutate(Broj.pojava = ifelse(is.na(Broj.pojava), 0, Broj.pojava)) %>%  mutate(YPLL = (YPLL_Age - Starost) * Broj.pojava) %>% group_by(Opstina, Starost) %>% summarise(YPLL = sum(YPLL))
   ) %>%
     mutate(YPLL = ifelse(is.na(YPLL), 0, YPLL)) %>% mutate(YPLLR = YPLL /
                                                              Pop * 100000),
   standardpop75
-) %>% group_by(Opstina) %>% summarise(
+) %>% group_by(Opstina) %>% summarise( Median_AGE_YPLL=FindMedian(YPLL),
   YPLLi = sum(YPLLR * stpop, na.rm = T),
   YPLLR = sum(YPLL) / sum(Pop) * 100000,
   YPLL = sum(YPLL),
@@ -312,7 +309,7 @@ standardized_YPLL_Avoidable <- left_join(
     mutate(YPLL = ifelse(is.na(YPLL), 0, YPLL)) %>% mutate(YPLLR = YPLL /
                                                              Pop * 100000),
   standardpop75
-) %>% group_by(Opstina) %>% summarise(
+) %>% group_by(Opstina) %>% summarise( Median_AGE_YPLL=FindMedian(YPLL),
   YPLLi = sum(YPLLR * stpop, na.rm = T),
   YPLLR = sum(YPLL) / sum(Pop) * 100000,
   YPLL = sum(YPLL),
@@ -333,7 +330,7 @@ standardized_YPLL_Preventable <- left_join(
     mutate(YPLL = ifelse(is.na(YPLL), 0, YPLL)) %>% mutate(YPLLR = YPLL /
                                                              Pop * 100000),
   standardpop75
-) %>% group_by(Opstina) %>% summarise(
+) %>% group_by(Opstina) %>% summarise( Median_AGE_YPLL=FindMedian(YPLL),
   YPLLi = sum(YPLLR * stpop, na.rm = T),
   YPLLR = sum(YPLL) / sum(Pop) * 100000,
   YPLL = sum(YPLL),
@@ -354,12 +351,67 @@ standardized_YPLL_Amenable <- left_join(
     mutate(YPLL = ifelse(is.na(YPLL), 0, YPLL)) %>% mutate(YPLLR = YPLL /
                                                              Pop * 100000),
   standardpop75
-) %>% group_by(Opstina) %>% summarise(
+) %>% group_by(Opstina) %>% summarise( Median_AGE_YPLL=FindMedian(YPLL),
   YPLLi = sum(YPLLR * stpop, na.rm = T),
   YPLLR = sum(YPLL) / sum(Pop) * 100000,
   YPLL = sum(YPLL),
   Pop = sum(Pop)
 )
+#Standardizovane godine izgubljenog života za celu Srbiju 2017-2019
+Serbia <- left_join(
+  left_join(
+     umrli %>% filter(Godina.materijala %in% c(2017,2018, 2019) ,
+                     Starost < YPLL_Age) %>%
+      mutate(Broj.pojava = ifelse(is.na(Broj.pojava), 0, Broj.pojava)) %>%  mutate(YPLL = (YPLL_Age - Starost) * Broj.pojava) %>% group_by(Opstina, Starost) %>% summarise(YPLL = sum(YPLL)),
+     
+
+    pop %>% filter(god %in% c(2017,2019, 2019) , nPol == "Ukupno",!IDStarost %in% c("0", "V85")) %>% mutate(Starost =
+                                                                                             as.integer(IDStarost)) %>% filter(Starost < 75) %>% group_by(Opstina = IDTer,  Starost) %>% summarise(Pop =sum(vrednost))
+   
+  ) %>%
+    mutate(YPLL = ifelse(is.na(YPLL), 0, YPLL)) %>% mutate(YPLLR = YPLL /
+                                                             Pop * 100000) %>% group_by(Starost) %>% summarise(
+  YPLL = sum(YPLL)/3,
+  Pop = sum(Pop)/3
+), 
+standardpop75
+)%>% group_by() %>%  summarize( YPLLi = sum((YPLL / Pop * stpop)*100000, na.rm = T),
+  YPLLR = sum(YPLL) / sum(Pop) * 100000)
+
+#TEST
+standardized_YPLL_TOTAL_2017_2019 <- left_join(
+  left_join(
+    pop %>% filter(god %in% c(2017,2018, 2019) , nPol == "Ukupno",!IDStarost %in% c("0", "V85")) %>%
+      mutate(Starost =as.integer(IDStarost)) %>% filter(Starost < 75) %>% group_by(Opstina = IDTer, Starost) %>% summarise(Pop = sum(vrednost)),
+    umrli %>% filter(Godina.materijala %in% c(2017,2018, 2019) , Starost < YPLL_Age) %>%
+      mutate(Broj.pojava = ifelse(is.na(Broj.pojava), 0, Broj.pojava)) %>%  mutate(YPLL = (YPLL_Age - Starost) * Broj.pojava) %>% group_by(Opstina, Starost) %>% summarise(YPLL = sum(YPLL))
+  ) %>% mutate(YPLL = ifelse(is.na(YPLL), 0, YPLL)) %>% mutate(YPLLR = YPLL /Pop * 100000),
+  standardpop75) %>% group_by(Opstina) %>% summarise( Median_AGE_YPLL=FindMedian(YPLL),
+  YPLLi = sum(YPLLR * stpop, na.rm = T),
+  YPLLR = sum(YPLL) / sum(Pop) * 100000,
+  YPLL = sum(YPLL),
+  Pop = sum(Pop)
+)
+
+```
+##Definisanje funkcije za izračunavanje medijalne starosti izgubljenih godina potencijalnog života
+```{r median_indicators, message=FALSE, warning=FALSE}
+
+FindMedian <- function(x) {
+  intervals <- cbind(1:length(x)-1, 1:length(x))
+  cf <- cumsum(x)
+  if(max(cf)==0){
+    return(NA)
+  }
+  Midrow <- findInterval(max(cf)/2, cf)+1
+  L <- intervals[Midrow,1 ]     
+  h <- diff(intervals[Midrow, ])
+  f <- x[Midrow]  
+  cf2 <- cf[Midrow - 1]       
+  n_2 <- max(cf)/2            
+  unname(L + (n_2 - cf2)/f * h)
+}
+
 
 ```
 ##Tabela o generalnim informacijama o prevremenom mortalitetu
@@ -649,23 +701,36 @@ pop %>% filter(god %in% c(2017,2018,2019) , IDTer=="RS",IDPol!=0, IDStarost!=0) 
 ypll_ages_2020 <- umrli %>% filter(
     Godina.materijala == 2020,
     Starost < YPLL_Age) %>%
-    mutate(YPLL = (YPLL_Age - Starost) * Broj.pojava) %>% group_by(Starost, Pol) %>% summarise(YPLL = sum(YPLL),Broj.pojava=sum(Broj.pojava) ) %>%  mutate( Pol=ifelse(Pol=="1","Muški", "Ženski")) %>%  ggplot() + geom_area(aes(x=Starost, y=YPLL, fill=Pol),size=1) + theme_tufte()+ scale_color_manual(values = c("#377eb8", "#e41a1c"))+ scale_x_continuous(breaks=scales::extended_breaks(n=20)) +scale_fill_manual(values = c("#377eb8", "#e41a1c"))+scale_y_continuous(breaks = c(5000, 10000, 15000, 20000, 25000),limits = c(0,25000))
+    mutate(YPLL = (YPLL_Age - Starost) * Broj.pojava) %>% group_by(Starost, Pol) %>% summarise(YPLL = sum(YPLL),Broj.pojava=sum(Broj.pojava) ) %>%  mutate( Pol=ifelse(Pol=="1","Muški", "Ženski"))  
+  
+  
+ ypll_ages_2020_plot <- ypll_ages_2020 %>%  ggplot() + geom_area(aes(x=Starost, y=YPLL, fill=Pol),size=1) + theme_tufte()+ scale_color_manual(values = c("#377eb8", "#e41a1c"))+ scale_x_continuous(breaks=scales::extended_breaks(n=20)) +scale_fill_manual(values = c("#377eb8", "#e41a1c"))+scale_y_continuous(breaks = c(5000, 10000, 15000, 20000, 25000),limits = c(0,25000)) + geom_vline(xintercept =ypll_ages_2020%>% group_by(Starost) %>% summarise(YPLL=sum(YPLL)) %>% pull(YPLL) %>% FindMedian(), col="#FFFFFF", size=1.5)+ geom_hline(yintercept = c(5000, 10000, 15000, 20000, 25000), col="#FFFFFF")
+ 
 
 ypll_ages_1719<- umrli %>% filter(
   Godina.materijala %in% c(2017,2018,2019),
-    Starost < 65) %>%
+    Starost < 75) %>%
     mutate(YPLL = (YPLL_Age - Starost) * Broj.pojava) %>% group_by(Starost, Pol) %>% summarise(YPLL = sum(YPLL)/3,Broj.pojava=sum(Broj.pojava)/3 ) %>%  mutate( Pol=ifelse(Pol=="1","Muški", "Ženski")) 
 
-ypll_ages_1719 %>% ggplot() + geom_area(aes(x=Starost, y=YPLL, fill=Pol),size=1) + theme_tufte()+ scale_color_manual(values = c("#377eb8", "#e41a1c"))+ scale_x_continuous(breaks=scales::extended_breaks(n=20)) +scale_fill_manual(values = c("#377eb8", "#e41a1c")) +scale_y_continuous(breaks = c(5000, 10000, 15000, 20000, 25000),limits = c(0,25000))+ geom_vline(xintercept = findMedian(ypll_ages_1719$YPLL[ypll_ages_1719$Pol=="Muški"]))
+ypll_ages_1719_plot<- ypll_ages_1719 %>% ggplot() + geom_area(aes(x=Starost, y=YPLL, fill=Pol),size=1) + theme_tufte()+ scale_color_manual(values = c("#377eb8", "#e41a1c"))+ scale_x_continuous(breaks=scales::extended_breaks(n=20)) +scale_fill_manual(values = c("#377eb8", "#e41a1c")) +scale_y_continuous(breaks = c(5000, 10000, 15000, 20000, 25000),limits = c(0,25000))+ geom_vline(xintercept =ypll_ages_1719%>% group_by(Starost) %>% summarise(YPLL=sum(YPLL)) %>% pull(YPLL) %>% FindMedian(), col="#FFFFFF", size=1.5)+ geom_hline(yintercept = c(5000, 10000, 15000, 20000, 25000), col="#FFFFFF")
 
 
-ypll_ages_2020_cov <- umrli %>% filter(
+
+
+
+#U slučaju COVID-a treba da se postaramo da se uzmu u obzir i rana godišta za kojih nema smrti.
+
+ypll_ages_2020_cov <-
+  left_join(
+    pop %>% filter(god == 2020, nPol != "Ukupno",!IDStarost %in% c("0", "V85")) %>% mutate(Starost =as.integer(IDStarost)) %>% filter(Starost < 75) %>% group_by(Starost, Pol=as.character(IDPol)) %>% summarise(Pop =sum(vrednost)),
+  umrli %>% filter(
     Godina.materijala == 2020,
     Starost < YPLL_Age,
     Uzrok.smrti %in% c("U071", "U072")) %>% 
-    mutate(YPLL = (YPLL_Age - Starost) * Broj.pojava) %>% group_by(Starost, Pol) %>% summarise(YPLL = sum(YPLL),Broj.pojava=sum(Broj.pojava) ) %>%  mutate( Pol=ifelse(Pol=="1","Muški", "Ženski"))  
+    mutate(YPLL = (YPLL_Age - Starost) * Broj.pojava) %>% group_by(Starost, Pol) %>% summarise(YPLL = sum(YPLL),Broj.pojava=sum(Broj.pojava) ) 
+  )%>%  mutate( Pol=ifelse(Pol=="1","Muški", "Ženski"),Broj.pojava=ifelse(is.na(Broj.pojava),0, Broj.pojava), YPLL=ifelse(is.na(YPLL),0, YPLL) )
   
- ypll_ages_2020_cov%>%  ggplot() + geom_area(aes(x=Starost, y=YPLL, fill=Pol),size=1) + theme_tufte()+ scale_color_manual(values = c("#377eb8", "#e41a1c"))+ scale_x_continuous(breaks=scales::extended_breaks(n=20)) +scale_fill_manual(values = c("#377eb8", "#e41a1c"))+scale_y_continuous(breaks = c(5000, 10000, 15000, 20000, 25000),limits = c(0,25000)) + geom_vline(xintercept = findMedian(ypll_ages_2020_cov$YPLL[ypll_ages_2020_cov$Pol=="Ženski"]))
+ ypll_ages_2020_cov_plot<- ypll_ages_2020_cov%>%  ggplot() + geom_area(aes(x=Starost, y=YPLL, fill=Pol),size=1) + theme_tufte()+ scale_color_manual(values = c("#377eb8", "#e41a1c"))+ scale_x_continuous(breaks=scales::extended_breaks(n=20)) +scale_fill_manual(values = c("#377eb8", "#e41a1c"))  +scale_y_continuous(breaks = c(5000, 10000, 15000, 20000, 25000),limits = c(0,25000))+geom_vline(xintercept =ypll_ages_2020_cov%>% group_by(Starost) %>% summarise(YPLL=sum(YPLL)) %>% pull(YPLL) %>% FindMedian(), col="#FFFFFF", size=1.5)+ geom_hline(yintercept = c(5000, 10000, 15000, 20000, 25000), col="#FFFFFF")
 
 
 
@@ -699,11 +764,39 @@ ggsave(ss_starost_2020,
         dpi = 600
       )
 
+ggsave(ypll_ages_1719_plot,
+        filename =  paste0(deparse(substitute(
+          ypll_ages_1719_plot
+        )), ".png"),
+        units = "mm",
+        width = 160,
+        height = 80,
+        dpi = 600
+      )
+ggsave(ypll_ages_2020_plot,
+        filename =  paste0(deparse(substitute(
+          ypll_ages_2020_plot
+        )), ".png"),
+        units = "mm",
+        width = 160,
+        height = 80,
+        dpi = 600
+      )
+ggsave(ypll_ages_2020_cov_plot,
+        filename =  paste0(deparse(substitute(
+          ypll_ages_2020_cov_plot
+        )), ".png"),
+        units = "mm",
+        width = 160,
+        height = 80,
+        dpi = 600
+      )
+
 ```
 ##GIS Analiza
 U ovom delu koristimo moranov globalni i lokalni indeks.
 
-```{r GIS, message=FALSE, warning=FALSE}
+```{r GIS i kartiranje, message=FALSE, warning=FALSE}
 
 
 
@@ -934,7 +1027,21 @@ buildMap <-
     paleta = "Reds"
   )
 
+   
+# Procena površine opština 
+   
+Serbia@data$area <- raster::area(Serbia)/1000000
+
+#Računaje koefijenta korelacije izemđu gustine naseljenosti i nivoa YPLLi
+
+cortestdata<- left_join(Serbia@data %>% mutate(code=as.character(code)), standardized_YPLL_TOTAL_2017_2019, by=c("code"="Opstina"))
+
+cor.test(cortestdata$Pop/cortestdata$area,cortestdata$YPLLi,method = "spearman")
+
+  
+   
 ```
+
 ```{r avoidable_trend, message=FALSE, warning=FALSE}
 #Gender
 popsr2020m <-
@@ -1060,56 +1167,7 @@ levels(sex_avoidable_years$Cause) <- c("SARS-CoV-2", "Ostali", "Moguće izbeći"
   
 
 ```
-```{r median_indicators, message=FALSE, warning=FALSE}
 
-umrli %>% filter(
-    Godina.materijala == 2020,
-    Starost < YPLL_Age,
-    #Uzrok.smrti %in% c("U071", "U072")
-) %>%
-    mutate(YPLL = (YPLL_Age - Starost) * Broj.pojava) %>% group_by(Starost) %>% summarise(YPLL = sum(YPLL),Broj.pojava=sum(Broj.pojava)) %>% mutate(cumsum(YPLL), median(cumsum(Broj.pojava)))
-
-
-disttest<-   umrli %>% filter(
-    Godina.materijala == 2020,
-    Starost < YPLL_Age) %>%
-  mutate(YPLL = (YPLL_Age - Starost) * Broj.pojava) %>% group_by(Starost) %>% summarise(YPLL = sum(YPLL),Broj.pojava=sum(Broj.pojava) ) %>% group_by() %>% summarise(median(Broj.pojava))
-  
-
-x <- disttest %>% mutate(CYPLL=cumsum(YPLL), Ccount= cumsum(Broj.pojava))
-x$Diff <- x$Ccount - max(x$Ccount)/2
-x$Starost[which(x$Diff==min(abs(x$Diff)))]
-
-findMedian <- function(x) {
-Ccount= cumsum(x)
-Diff <- Ccount - max(Ccount)/2
-a <- 0:75
-return(a[which(abs(Diff)==min(abs(Diff)))])
-}
-
-findMedian2 <- function(x) {
-Ccount= cumsum(x)
-Diff <- Ccount - rev(cumsum(rev(x)))
-return(intersect())
-return(data.frame(x=x,a=Ccount, b=rev(cumsum(rev(x))), c=Ccount-rev(cumsum(rev(x)))) %>% intersect(a,b))
-a <- 0:75
-return(a[which(abs(Diff)==min(abs(Diff)))])
-}
-
-FindMedian <- function(x) {
-  age <- 0:75
-  cs <- cumsum(x)
-  middle <- findInterval(max(cs)/2,cs)+1
-  mage <- age[middle]    
-  mx <- x[middle]       
-  cs2 <- cs[middle-1]          
-  half <- max(cs)/2
-  return(unname(mage+(half-cs2)/mx))
-}
-
-
-
-```
 ```{r airpolution, message=FALSE, warning=FALSE}
 library(raster)
 library(rasterVis)
