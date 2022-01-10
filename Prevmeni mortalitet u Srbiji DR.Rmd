@@ -211,152 +211,64 @@ colnames(standardpop75)[1] <- "Starost"
 #Definisanje referentnog godišta za računanje pokazatelja izgubljenih godina potencijalnog života
 YPLL_Age <- 75
 
-#Računanje standardizovanog pokazatelja izgubljenih godina potencijalnog života umrlih od bolesti COVID-19
-standardized_YPLL_Covid <- left_join(
-  left_join(
-    pop %>% filter(god == 2020, nPol == "Ukupno",!IDStarost %in% c("0", "V85")) %>% mutate(Starost =
-                                                                                             as.integer(IDStarost)) %>% filter(Starost < 75) %>% group_by(Opstina = IDTer, Starost) %>% summarise(Pop =
-                                                                                                                                                                                                    sum(vrednost)),
-    umrli %>% filter(
-      Godina.materijala == 2020,
-      Starost < YPLL_Age,
-      Uzrok.smrti %in% c("U071", "U072")
-    ) %>%
-      mutate(Broj.pojava = ifelse(is.na(Broj.pojava), 0, Broj.pojava)) %>%  mutate(YPLL = (YPLL_Age - Starost) * Broj.pojava) %>% group_by(Opstina, Starost) %>% summarise(YPLL = sum(YPLL))
-  ) %>%
-    mutate(YPLL = ifelse(is.na(YPLL), 0, YPLL)) %>% mutate(YPLLR = YPLL /
-                                                             Pop * 100000),
-  standardpop75
-) %>% group_by(Opstina) %>% summarise( Median_AGE_YPLL=FindMedian(YPLL),
-  YPLLi = sum(YPLLR * stpop, na.rm = T),
-  YPLLR = sum(YPLL) / sum(Pop) * 100000,
-  YPLL = sum(YPLL),
-  Pop = sum(Pop)
+#Definisanje fukcije za računanje Standardizovanih godina izgubljenog života
+stadnardize_ypll <- function(umrli=NULL, pop=NULL,standardpopulation=NULL,years=NULL, standard_age=NULL, causes=NULL ) {
+standardized_mortality <- left_join(
+    left_join(
+        pop %>% filter(god %in% years , nPol == "Ukupno",!IDStarost %in% c("0", "V85")) %>% mutate(Starost = as.integer(IDStarost)) %>% filter(Starost < YPLL_Age) %>% group_by(Opstina = IDTer, Starost) %>% summarise(Pop = sum(vrednost)), umrli %>% filter(Godina.materijala %in% years, Starost < YPLL_Age,if(!is.null(causes)){eval(parse(text = causes))} else {!Uzrok.smrti %in% c()}) %>% mutate(Broj.pojava = ifelse(is.na(Broj.pojava), 0, Broj.pojava)) %>%  mutate(YPLL = (YPLL_Age - Starost) * Broj.pojava) %>% group_by(Opstina, Starost) %>% summarise(YPLL = sum(YPLL))) %>% mutate(YPLL = ifelse(is.na(YPLL), 0, YPLL)) %>% mutate(YPLLR = YPLL /Pop * 100000), standardpopulation) %>% group_by(Opstina) %>% summarise( 
+                                       Median_AGE_YPLL=FindMedian(YPLL),
+                                       YPLLi = sum(YPLLR * stpop, na.rm = T),
+                                       YPLLR = sum(YPLL) / sum(Pop) * 100000,
+                                       YPLL = sum(YPLL),
+                                       Pop = sum(Pop)
 )
+return(standardized_mortality)
+}
+stadnardize_ypll_republic <- function(umrli=NULL, pop=NULL,standardpopulation=NULL,years=NULL, standard_age=NULL, causes=NULL ) {
+
+standardized_mortality_republic <- left_join(
+    left_join(
+        pop %>% filter(god %in% years , nPol == "Ukupno",!IDStarost %in% c("0", "V85")) %>% mutate(Starost = as.integer(IDStarost)) %>% filter(Starost < YPLL_Age,IDTer %in% umrli$Opstina ) %>% group_by(Starost) %>% summarise(Pop = sum(vrednost)), umrli %>% filter(Godina.materijala %in% years, Starost < YPLL_Age,if(!is.null(causes)){eval(parse(text = causes))} else {!Uzrok.smrti %in% c()}) %>% mutate(Broj.pojava = ifelse(is.na(Broj.pojava), 0, Broj.pojava)) %>%  mutate(YPLL = (YPLL_Age - Starost) * Broj.pojava) %>% group_by( Starost) %>% summarise(YPLL = sum(YPLL), smrti=sum(Broj.pojava))) %>% mutate(YPLL = ifelse(is.na(YPLL), 0, YPLL)) %>% mutate(YPLLR = YPLL /Pop * 100000), standardpopulation) %>% group_by() %>% summarise( 
+                                       Median_AGE_YPLL=FindMedian(YPLL),
+                                       smrti= sum(smrti),
+                                       YPLLi = sum(YPLLR * stpop, na.rm = T),
+                                       YPLLR = sum(YPLL) / sum(Pop) * 100000,
+                                       YPLL = sum(YPLL),
+                                       Pop = sum(Pop)
+)
+return(standardized_mortality_republic)
+}
+
+
+
+#Računanje standardizovanog pokazatelja izgubljenih godina potencijalnog života umrlih od bolesti COVID-19
+standardized_YPLL_Covid <- stadnardize_ypll(umrli, pop, standardpop75, c( 2020),YPLL_Age, causes='!Uzrok.smrti %in% c("U071", "U072")' )
+
+
 
 #Računanje standardizovanog pokazatelja izgubljenih godina potencijalnog života koji nisu umrli od bolesti COVID-19
 
-standardized_YPLL_NoN_Covid <- left_join(
-  left_join(
-    pop %>% filter(god == 2020, nPol == "Ukupno",!IDStarost %in% c("0", "V85")) %>% mutate(Starost =
-                                                                                             as.integer(IDStarost)) %>% filter(Starost < 75) %>% group_by(Opstina = IDTer, Starost) %>% summarise(Pop =
-                                                                                                                                                                                                    sum(vrednost)),
-    umrli %>% filter(Godina.materijala == 2020,
-                     Starost < YPLL_Age) %>%
-      mutate(Broj.pojava = ifelse(is.na(Broj.pojava), 0, Broj.pojava)) %>%  mutate(YPLL = (YPLL_Age - Starost) * Broj.pojava) %>% group_by(Opstina, Starost) %>% summarise(YPLL = sum(YPLL))
-  ) %>%
-    mutate(YPLL = ifelse(is.na(YPLL), 0, YPLL)) %>% mutate(YPLLR = YPLL /
-                                                             Pop * 100000),
-  standardpop75
-) %>% group_by(Opstina) %>% summarise(
-  YPLLi = sum(YPLLR * stpop, na.rm = T),
-  YPLLR = sum(YPLL) / sum(Pop) * 100000,
-  YPLL = sum(YPLL),
-  Pop = sum(Pop)
-)
+standardized_YPLL_NoN_Covid <- stadnardize_ypll(umrli, pop, standardpop75, c( 2020),YPLL_Age, causes='!Uzrok.smrti %in% c("U071", "U072")' )
+
 
 #Računanje standardizovanog pokazatelja izgubljenih godina potencijalnog života umrlih
-standardized_YPLL_TOTAL <- left_join(
-  left_join(
-    pop %>% filter(god == 2020, nPol == "Ukupno",!IDStarost %in% c("0", "V85")) %>% mutate(Starost =
-                                                                                             as.integer(IDStarost)) %>% filter(Starost < 75) %>% group_by(Opstina = IDTer, Starost) %>% summarise(Pop =
-                                                                                                                                                                                                    sum(vrednost)),
-    umrli %>% filter(Godina.materijala == 2020,
-                     Starost < YPLL_Age) %>%
-      mutate(Broj.pojava = ifelse(is.na(Broj.pojava), 0, Broj.pojava)) %>%  mutate(YPLL = (YPLL_Age - Starost) * Broj.pojava) %>% group_by(Opstina, Starost) %>% summarise(YPLL = sum(YPLL))
-  ) %>%
-    mutate(YPLL = ifelse(is.na(YPLL), 0, YPLL)) %>% mutate(YPLLR = YPLL /
-                                                             Pop * 100000),
-  standardpop75
-) %>% group_by(Opstina) %>% summarise( Median_AGE_YPLL=FindMedian(YPLL),
-  YPLLi = sum(YPLLR * stpop, na.rm = T),
-  YPLLR = sum(YPLL) / sum(Pop) * 100000,
-  YPLL = sum(YPLL),
-  Pop = sum(Pop)
-)
-
+ stadnardize_ypll(umrli, pop, standardpop75, c( 2020),YPLL_Age )
+ 
 #Računanje standardizovanog pokazatelja izgubljenih godina potencijalnog života umrlih 2017-2019
-standardized_YPLL_TOTAL_2017_2019 <- left_join(
-  left_join(
-    pop %>% filter(god %in% c(2017,2018, 2019) , nPol == "Ukupno",!IDStarost %in% c("0", "V85")) %>% mutate(Starost =
-                                                                                             as.integer(IDStarost)) %>% filter(Starost < 75) %>% group_by(Opstina = IDTer, Starost) %>% summarise(Pop =
-                                                                                                                                                                                                    sum(vrednost)),
-    umrli %>% filter(Godina.materijala %in% c(2017,2018, 2019) ,
-                     Starost < YPLL_Age) %>%
-      mutate(Broj.pojava = ifelse(is.na(Broj.pojava), 0, Broj.pojava)) %>%  mutate(YPLL = (YPLL_Age - Starost) * Broj.pojava) %>% group_by(Opstina, Starost) %>% summarise(YPLL = sum(YPLL))
-  ) %>%
-    mutate(YPLL = ifelse(is.na(YPLL), 0, YPLL)) %>% mutate(YPLLR = YPLL /
-                                                             Pop * 100000),
-  standardpop75
-) %>% group_by(Opstina) %>% summarise( Median_AGE_YPLL=FindMedian(YPLL),
-  YPLLi = sum(YPLLR * stpop, na.rm = T),
-  YPLLR = sum(YPLL) / sum(Pop) * 100000,
-  YPLL = sum(YPLL),
-  Pop = sum(Pop)
-)
+standardized_YPLL_TOTAL_2017_2019 <- stadnardize_ypll(umrli, pop, standardpop75, c(2017,2018, 2019),YPLL_Age)
 
 #Računanje standardizovanog pokazatelja izgubljenih godina potencijalnog života umrlih od uzroka smrti koji se mogu izbeći
 
-standardized_YPLL_Avoidable <- left_join(
-  left_join(
-    pop %>% filter(god == 2020, nPol == "Ukupno",!IDStarost %in% c("0", "V85")) %>% mutate(Starost =
-                                                                                             as.integer(IDStarost)) %>% filter(Starost < 75) %>% group_by(Opstina = IDTer, Starost) %>% summarise(Pop =
-                                                                                                                                                                                                    sum(vrednost)),
-    umrli %>% filter(Godina.materijala == 2020, Avoidable == 1,
-                     Starost < YPLL_Age) %>%
-      mutate(Broj.pojava = ifelse(is.na(Broj.pojava), 0, Broj.pojava)) %>%  mutate(YPLL = (YPLL_Age - Starost) * Broj.pojava) %>% group_by(Opstina, Starost) %>% summarise(YPLL = sum(YPLL))
-  ) %>%
-    mutate(YPLL = ifelse(is.na(YPLL), 0, YPLL)) %>% mutate(YPLLR = YPLL /
-                                                             Pop * 100000),
-  standardpop75
-) %>% group_by(Opstina) %>% summarise( Median_AGE_YPLL=FindMedian(YPLL),
-  YPLLi = sum(YPLLR * stpop, na.rm = T),
-  YPLLR = sum(YPLL) / sum(Pop) * 100000,
-  YPLL = sum(YPLL),
-  Pop = sum(Pop)
-)
+standardized_YPLL_Avoidable <- stadnardize_ypll(umrli, pop, standardpop75, c(2020),YPLL_Age,causes='Avoidable==1')
 
 #Računanje standardizovanog pokazatelja izgubljenih godina potencijalnog života umrlih od uzroka smrti koji se mogu izbeći prevencijom
 
-standardized_YPLL_Preventable <- left_join(
-  left_join(
-    pop %>% filter(god == 2020, nPol == "Ukupno",!IDStarost %in% c("0", "V85")) %>% mutate(Starost =
-                                                                                             as.integer(IDStarost)) %>% filter(Starost < 75) %>% group_by(Opstina = IDTer, Starost) %>% summarise(Pop =
-                                                                                                                                                                                                    sum(vrednost)),
-    umrli %>% filter(Godina.materijala == 2020, Preventable == 1,
-                     Starost < YPLL_Age) %>%
-      mutate(Broj.pojava = ifelse(is.na(Broj.pojava), 0, Broj.pojava)) %>%  mutate(YPLL = (YPLL_Age - Starost) * Broj.pojava) %>% group_by(Opstina, Starost) %>% summarise(YPLL = sum(YPLL))
-  ) %>%
-    mutate(YPLL = ifelse(is.na(YPLL), 0, YPLL)) %>% mutate(YPLLR = YPLL /
-                                                             Pop * 100000),
-  standardpop75
-) %>% group_by(Opstina) %>% summarise( Median_AGE_YPLL=FindMedian(YPLL),
-  YPLLi = sum(YPLLR * stpop, na.rm = T),
-  YPLLR = sum(YPLL) / sum(Pop) * 100000,
-  YPLL = sum(YPLL),
-  Pop = sum(Pop)
-)
+standardized_YPLL_Preventable <- stadnardize_ypll(umrli, pop, standardpop75, c(2020),YPLL_Age,causes='Preventable==1')
 
 #Računanje standardizovanog pokazatelja izgubljenih godina potencijalnog života umrlih od uzroka smrti koji se mogu izbeći adekvatnom i pravovremenom zdravstvenom zaštitom
 
-standardized_YPLL_Amenable <- left_join(
-  left_join(
-    pop %>% filter(god == 2020, nPol == "Ukupno",!IDStarost %in% c("0", "V85")) %>% mutate(Starost =
-                                                                                             as.integer(IDStarost)) %>% filter(Starost < 75) %>% group_by(Opstina = IDTer, Starost) %>% summarise(Pop =
-                                                                                                                                                                                                    sum(vrednost)),
-    umrli %>% filter(Godina.materijala == 2020, Amenable == 1,
-                     Starost < YPLL_Age) %>%
-      mutate(Broj.pojava = ifelse(is.na(Broj.pojava), 0, Broj.pojava)) %>%  mutate(YPLL = (YPLL_Age - Starost) * Broj.pojava) %>% group_by(Opstina, Starost) %>% summarise(YPLL = sum(YPLL))
-  ) %>%
-    mutate(YPLL = ifelse(is.na(YPLL), 0, YPLL)) %>% mutate(YPLLR = YPLL /
-                                                             Pop * 100000),
-  standardpop75
-) %>% group_by(Opstina) %>% summarise( Median_AGE_YPLL=FindMedian(YPLL),
-  YPLLi = sum(YPLLR * stpop, na.rm = T),
-  YPLLR = sum(YPLL) / sum(Pop) * 100000,
-  YPLL = sum(YPLL),
-  Pop = sum(Pop)
-)
+standardized_YPLL_Amenable <- stadnardize_ypll(umrli, pop, standardpop75, c(2020),YPLL_Age,causes='Amenable==1')
+
 #Standardizovane godine izgubljenog života za celu Srbiju 2017-2019
 Serbia <- left_join(
   left_join(
@@ -386,12 +298,13 @@ standardized_YPLL_TOTAL_2017_2019 <- left_join(
     umrli %>% filter(Godina.materijala %in% c(2017,2018, 2019) , Starost < YPLL_Age) %>%
       mutate(Broj.pojava = ifelse(is.na(Broj.pojava), 0, Broj.pojava)) %>%  mutate(YPLL = (YPLL_Age - Starost) * Broj.pojava) %>% group_by(Opstina, Starost) %>% summarise(YPLL = sum(YPLL))
   ) %>% mutate(YPLL = ifelse(is.na(YPLL), 0, YPLL)) %>% mutate(YPLLR = YPLL /Pop * 100000),
-  standardpop75) %>% group_by(Opstina) %>% summarise( Median_AGE_YPLL=FindMedian(YPLL),
-  YPLLi = sum(YPLLR * stpop, na.rm = T),
-  YPLLR = sum(YPLL) / sum(Pop) * 100000,
+  standardpop75) %>% mutate(YPLLi = YPLL/Pop*stpop) %>%  group_by(Opstina) %>% summarise( Median_AGE_YPLL=FindMedian(YPLL),YPLLi = sum(YPLLi, na.rm = T)*100000, YPLLR = sum(YPLL) / sum(Pop) * 100000,
   YPLL = sum(YPLL),
   Pop = sum(Pop)
 )
+
+#Standardizovane godine izgubljenog života za celu Srbiju 2017-2019
+
 
 ```
 ##Definisanje funkcije za izračunavanje medijalne starosti izgubljenih godina potencijalnog života
