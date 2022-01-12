@@ -26,6 +26,7 @@ require(rgdal)
 require(maptools)
 require(ggthemes)
 require(geojsonio)
+require(ggpubr)
 
 #Učitavamo datoteke
 mort_podaci_postoje <- file.exists("umrli15-20.xslx")
@@ -188,6 +189,26 @@ opstine <- read.csv(file = "Serbia Map/opstine.csv")
 
 
 ```
+##Definisanje funkcije za izračunavanje medijalne starosti izgubljenih godina potencijalnog života
+```{r median_indicators, message=FALSE, warning=FALSE}
+
+FindMedian <- function(x) {
+  intervals <- cbind(1:length(x)-1, 1:length(x))
+  cf <- cumsum(x)
+  if(max(cf)==0){
+    return(NA)
+  }
+  Midrow <- findInterval(max(cf)/2, cf)+1
+  L <- intervals[Midrow,1 ]     
+  h <- diff(intervals[Midrow, ])
+  f <- x[Midrow]  
+  cf2 <- cf[Midrow - 1]       
+  n_2 <- max(cf)/2            
+  unname(L + (n_2 - cf2)/f * h)
+}
+
+
+```
 
 ## Dodavanje podatka o broju stanovnika i računanje pokazatelja YPLL
 U prvomd delu se učitavaju podaci o populaciji koji se mogu preuzeti sa portala otvorenih podataka RZS.
@@ -242,7 +263,7 @@ return(standardized_mortality_republic)
 
 
 #Računanje standardizovanog pokazatelja izgubljenih godina potencijalnog života umrlih od bolesti COVID-19
-standardized_YPLL_Covid <- stadnardize_ypll(umrli, pop, standardpop75, c( 2020),YPLL_Age, causes='!Uzrok.smrti %in% c("U071", "U072")' )
+standardized_YPLL_Covid <- stadnardize_ypll(umrli, pop, standardpop75, c( 2020),YPLL_Age, causes='Uzrok.smrti %in% c("U071", "U072")' )
 
 
 
@@ -269,26 +290,14 @@ standardized_YPLL_Preventable <- stadnardize_ypll(umrli, pop, standardpop75, c(2
 
 standardized_YPLL_Amenable <- stadnardize_ypll(umrli, pop, standardpop75, c(2020),YPLL_Age,causes='Amenable==1')
 
-#Standardizovane godine izgubljenog života za celu Srbiju 2017-2019
-Serbia <- left_join(
-  left_join(
-     umrli %>% filter(Godina.materijala %in% c(2017,2018, 2019) ,
-                     Starost < YPLL_Age) %>%
-      mutate(Broj.pojava = ifelse(is.na(Broj.pojava), 0, Broj.pojava)) %>%  mutate(YPLL = (YPLL_Age - Starost) * Broj.pojava) %>% group_by(Opstina, Starost) %>% summarise(YPLL = sum(YPLL)),
-     
 
-    pop %>% filter(god %in% c(2017,2019, 2019) , nPol == "Ukupno",!IDStarost %in% c("0", "V85")) %>% mutate(Starost =
-                                                                                             as.integer(IDStarost)) %>% filter(Starost < 75) %>% group_by(Opstina = IDTer,  Starost) %>% summarise(Pop =sum(vrednost))
-   
-  ) %>%
-    mutate(YPLL = ifelse(is.na(YPLL), 0, YPLL)) %>% mutate(YPLLR = YPLL /
-                                                             Pop * 100000) %>% group_by(Starost) %>% summarise(
-  YPLL = sum(YPLL)/3,
-  Pop = sum(Pop)/3
-), 
-standardpop75
-)%>% group_by() %>%  summarize( YPLLi = sum((YPLL / Pop * stpop)*100000, na.rm = T),
-  YPLLR = sum(YPLL) / sum(Pop) * 100000)
+#Računanje standardizovanog pokazatelja izgubljenih godina potencijalnog života umrlih od smrti koje su se mogle izbeći 2017-2019
+standardized_YPLL_Avoidable_2017_2019 <- stadnardize_ypll(umrli, pop, standardpop75, c(2017,2018, 2019),YPLL_Age,causes='Avoidable==1')
+
+
+#Standardizovane godine izgubljenog života za celu Srbiju 2017-2019
+stadnardize_ypll_republic(umrli, pop, standardpop75, c( 2017, 2018, 2019),YPLL_Age )
+
 
 #TEST
 standardized_YPLL_TOTAL_2017_2019 <- left_join(
@@ -307,26 +316,7 @@ standardized_YPLL_TOTAL_2017_2019 <- left_join(
 
 
 ```
-##Definisanje funkcije za izračunavanje medijalne starosti izgubljenih godina potencijalnog života
-```{r median_indicators, message=FALSE, warning=FALSE}
 
-FindMedian <- function(x) {
-  intervals <- cbind(1:length(x)-1, 1:length(x))
-  cf <- cumsum(x)
-  if(max(cf)==0){
-    return(NA)
-  }
-  Midrow <- findInterval(max(cf)/2, cf)+1
-  L <- intervals[Midrow,1 ]     
-  h <- diff(intervals[Midrow, ])
-  f <- x[Midrow]  
-  cf2 <- cf[Midrow - 1]       
-  n_2 <- max(cf)/2            
-  unname(L + (n_2 - cf2)/f * h)
-}
-
-
-```
 ##Tabela o generalnim informacijama o prevremenom mortalitetu
 
 
@@ -721,7 +711,7 @@ SRMAP <- fortify(Serbia, region = "code")
 SRMAP$region <- SRMAP$id
 
 Kosovo <- geojson_read("Kosovo/Kosovo.geojson",  what = "sp")
-
+YPLLR
 
 
 
@@ -798,7 +788,7 @@ buildMap <-
           map_id = id,
           x = long,
           y = lat,
-          fill = round(YPLLR, 0),
+          fill = round(eval(parse(text=variable)), 0),
           group = group,
           label = region
         ),
@@ -939,20 +929,71 @@ buildMap <-
     variable = "YPLLi",
     paleta = "Reds"
   )
-
    
+   
+   #Avoidable standardized YPLL map 2017-2019
+  buildMap(
+    map = Serbia,
+    foritfied_map = SRMAP,
+    motality_dataframe = standardized_YPLL_Avoidable_2017_2019,
+    variable = "YPLLi",
+    paleta = "OrRd"
+  )
+
+   b<- standardized_YPLL_Avoidable_2017_2019[standardized_YPLL_Avoidable_2017_2019$Opstina!="71226",]
 # Procena površine opština 
    
 Serbia@data$area <- raster::area(Serbia)/1000000
+
+#Dodavanje zarada
+zaradaOpstina<- read.xlsx(xlsxFile = "Prosecne NETO zarade RSD.xlsx")
+
+Serbia@data$wage <- left_join(Serbia@data,zaradaOpstina %>% filter(skrIndikator=="Просечне бруто зараде") %>% mutate(code=as.numeric(IDTer) ) %>%  select(code, Vrednost) %>%  group_by(code) %>% summarise(Vrednost=mean(as.numeric(Vrednost))))$Vrednost
+
 
 #Računaje koefijenta korelacije izemđu gustine naseljenosti i nivoa YPLLi
 
 cortestdata<- left_join(Serbia@data %>% mutate(code=as.character(code)), standardized_YPLL_TOTAL_2017_2019, by=c("code"="Opstina"))
 
 cor.test(cortestdata$Pop/cortestdata$area,cortestdata$YPLLi,method = "spearman")
+cortestdata$density <- cortestdata$Pop/cortestdata$area
 
+
+cor.test(log(cortestdata$density),log(cortestdata$YPLLi),method = "spearman")
+
+lm(data=cortestdata, formula = log(density)~log(YPLLi)) %>% summary
+
+
+
+getscatterplot <- function(mortalitydataframe=NULL,map=NULL, x=NULL, y=NULL, cor=T) {
+  cortestdata<- left_join(mortalitydataframe, Serbia@data %>% mutate(Opstina=as.character(code))) 
+cortestdata$density <- cortestdata$Pop/cortestdata$area
+scatterplottosave<-  cortestdata %>% ggplot(aes(x=eval(parse(text=x)),y=eval(parse(text=y)))) + geom_point() + theme_tufte() +stat_cor(p.digits = 2, aes(label =  paste(..rr.label.., ..p.label.., sep = "~`,`~")))+xlab(x)+ylab(y)
   
+  ggsave(scatterplottosave,
+        filename =  paste0(paste(deparse(substitute(
+          mortalitydataframe)),x,y, sep = "-"), ".png"), 
+        units = "mm",
+        width = 160,
+        height = 80,
+        dpi = 600
+      )
+  if(cor){
+  print(cor.test(cortestdata$density, cortestdata$YPLLi, method ="spearman"))
+  }
+
+}
    
+
+getscatterplot(mortalitydataframe = standardized_YPLL_TOTAL_2017_2019, map = Serbia,x= "log(density)",y= "log(YPLLi)")
+getscatterplot(mortalitydataframe = standardized_YPLL_NoN_Covid, map = Serbia,x= "log(density)",y= "log(YPLLi)")
+getscatterplot(mortalitydataframe = standardized_YPLL_TOTAL, map = Serbia,x= "log(density)",y= "log(YPLLi)")
+getscatterplot(mortalitydataframe = standardized_YPLL_Covid, map = Serbia,x= "log(density)",y= "log(YPLLi)")
+getscatterplot(mortalitydataframe = standardized_YPLL_Amenable, map = Serbia,x= "log(density)",y= "log(YPLLi)")
+getscatterplot(mortalitydataframe = standardized_YPLL_Avoidable, map = Serbia,x= "log(density)",y= "log(YPLLi)")
+getscatterplot(mortalitydataframe = standardized_YPLL_Preventable, map = Serbia,x= "log(density)",y= "log(YPLLi)")
+
+
 ```
 
 ```{r avoidable_trend, message=FALSE, warning=FALSE}
