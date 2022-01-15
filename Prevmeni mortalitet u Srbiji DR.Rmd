@@ -27,6 +27,7 @@ require(maptools)
 require(ggthemes)
 require(geojsonio)
 require(ggpubr)
+require(treemap)
 
 #Učitavamo datoteke
 mort_podaci_postoje <- file.exists("umrli15-20.xslx")
@@ -87,7 +88,7 @@ if (!mort_podaci_postoje) {
       )
     )
   colnames(ch) <-
-    c("Chapeter", "List", "Title", "TilteSR", "TilteSRCyr")
+    c("Chapeter", "List", "Title", "TilteSR", "TitleSRCyr")
   ch <- ch[ch$List == 103, c(1, 3)]
   colnames(ch)[1] <- "Chapter"
   amenmort <- read_csv(file = "Mortalty Coding/amort.csv")
@@ -948,7 +949,9 @@ Serbia@data$area <- raster::area(Serbia)/1000000
 #Dodavanje zarada
 zaradaOpstina<- read.xlsx(xlsxFile = "Prosecne NETO zarade RSD.xlsx")
 
-Serbia@data$wage <- left_join(Serbia@data,zaradaOpstina %>% filter(skrIndikator=="Просечне бруто зараде") %>% mutate(code=as.numeric(IDTer) ) %>%  select(code, Vrednost) %>%  group_by(code) %>% summarise(Vrednost=mean(as.numeric(Vrednost))))$Vrednost
+Serbia@data$wageGross <- left_join(Serbia@data,zaradaOpstina %>% filter(skrIndikator=="Просечне бруто зараде") %>% mutate(code=as.numeric(IDTer) ) %>%  select(code, Vrednost) %>%  group_by(code) %>% summarise(Vrednost=mean(as.numeric(Vrednost))))$Vrednost
+Serbia@data$wageNet <- left_join(Serbia@data,zaradaOpstina %>% filter(skrIndikator=="Просечне нето зараде") %>% mutate(code=as.numeric(IDTer) ) %>%  select(code, Vrednost) %>%  group_by(code) %>% summarise(Vrednost=mean(as.numeric(Vrednost))))$Vrednost
+
 
 
 #Računaje koefijenta korelacije izemđu gustine naseljenosti i nivoa YPLLi
@@ -983,7 +986,7 @@ scatterplottosave<-  cortestdata %>% ggplot(aes(x=eval(parse(text=x)),y=eval(par
   }
 
 }
-   
+  
 
 getscatterplot(mortalitydataframe = standardized_YPLL_TOTAL_2017_2019, map = Serbia,x= "log(density)",y= "log(YPLLi)")
 getscatterplot(mortalitydataframe = standardized_YPLL_NoN_Covid, map = Serbia,x= "log(density)",y= "log(YPLLi)")
@@ -992,6 +995,14 @@ getscatterplot(mortalitydataframe = standardized_YPLL_Covid, map = Serbia,x= "lo
 getscatterplot(mortalitydataframe = standardized_YPLL_Amenable, map = Serbia,x= "log(density)",y= "log(YPLLi)")
 getscatterplot(mortalitydataframe = standardized_YPLL_Avoidable, map = Serbia,x= "log(density)",y= "log(YPLLi)")
 getscatterplot(mortalitydataframe = standardized_YPLL_Preventable, map = Serbia,x= "log(density)",y= "log(YPLLi)")
+
+getscatterplot(mortalitydataframe = standardized_YPLL_TOTAL_2017_2019, map = Serbia,x= "log(wageNet)",y= "log(YPLLi)")
+getscatterplot(mortalitydataframe = standardized_YPLL_Avoidable, map = Serbia,x= "log(wageNet)",y= "log(YPLLi)")
+getscatterplot(mortalitydataframe = standardized_YPLL_Amenable, map = Serbia,x= "log(wageNet)",y= "log(YPLLi)")
+getscatterplot(mortalitydataframe = standardized_YPLL_Preventable, map = Serbia,x= "log(wageNet)",y= "log(YPLLi)")
+getscatterplot(mortalitydataframe = standardized_YPLL_Covid, map = Serbia,x= "log(wageNet)",y= "log(YPLLi)")
+getscatterplot(mortalitydataframe = standardized_YPLL_NoN_Covid, map = Serbia,x= "log(wageNet)",y= "log(YPLLi)")
+getscatterplot(mortalitydataframe = standardized_YPLL_TOTAL, map = Serbia,x= "log(wageNet)",y= "log(YPLLi)")
 
 
 ```
@@ -1121,7 +1132,186 @@ levels(sex_avoidable_years$Cause) <- c("SARS-CoV-2", "Ostali", "Moguće izbeći"
   
 
 ```
+```{r causes_and_treemaps, message=FALSE, warning=FALSE}
 
+#Učitavanje podataka o dijagnozama 
+
+d <- as.data.frame(read.csv(file = "Mortalty Coding/Diagnosis2.txt",sep = "\t", quote = '""', header = F,stringsAsFactors = F, encoding = "UTF-8"))
+d <- d[,1:5]
+colnames(d) <- c("Chapter", "List", "Cause", "Title", "TilteSR")
+d <- d[d$List==103,]
+
+
+#Učitavanje podataka o kategorijama dijagnoza 
+
+
+ch <- as.data.frame(read.csv(file = "Mortalty Coding/CodingChapters2.txt",sep = "\t", quote = '""', header = F, stringsAsFactors = F,encoding = "UTF-8"))
+colnames(ch) <- c("Chapeter", "List", "Title", "TilteSR")
+ch <- ch[ch$List==103,c(1,3)]
+colnames(ch)[1] <- "Chapter"
+
+#Definisanje funkcije koja priprema podatke o mortalitetu za treemap vizuelizaciju
+
+prep_for_treemap <- name <- function(x, sr=F, size_col=NULL, category_col=NULL, title_col=NULL, negative=F){ 
+  palet <-
+    c(
+      "9" = "#de2d26",
+      "2" = "#636363",
+      "20" = "#8DD3C7",
+      "5" = "#FFFFB3",
+      "6" = "#BEBADA",
+      "3" = "#FB8072",
+      "10" = "#80B1D3",
+      "12" = "#FDB462",
+      "1" = "#B3DE69",
+      "4" = "#FCCDE5",
+      "13" = "#D9D9D9",
+      "14" = "#BC80BD",
+      "18" = "#CCEBC5",
+      "8" = "#FFED6F",
+      "21" = "#7FC97F",
+      "15" = "#BEAED4",
+      "11" = "#FDC086",
+      "16" = "#FFFF99",
+      "22" = "#386CB0",
+      "17" = "#F0027F",
+      "19" = "#BF5B17",
+      "7" = "#666666"
+    )
+lista <- vector()
+tl <- vector
+for(i in 1:22){
+  lista[i] <- sum(x[x[,category_col]==i,size_col]) # (sum(x[x[,category_col])==i, size_col ]))
+}
+ccc <- as.data.frame(lista)
+ccc[, 2] <- seq(1:22)
+ccc <- ccc[order(-ccc$lista, ccc$V2) , ]
+rl <- as.vector(ccc$V2)#ova lista su chapteri po zastupljenosti, tim redosledom se pojavljuju na treemapu
+
+eval(parse(text = paste0("x <- x[with(x, order(",category_col,", ", title_col,")), ]"))) #da poredjam po kategorijama za loop ispod
+j <- 0
+repeat
+{
+  j <- j+1
+
+  if(is.na(x[j,category_col])) next
+
+  x[j,"Order"] <- which(rl==unname(unlist(x[j,category_col])))
+  
+  x[j,"Color"] <- unname(unlist(palet[ as.character(unname(unlist(x[j,category_col])))]))
+  if(j==(nrow(x))){
+    x <-  x %>% mutate(Percent= paste0(as.character(round(eval(parse(text = size_col))/sum(x[,size_col])*100, 2)), "%"))
+    if(sr){
+      x <-x %>% mutate(Percent=sub("\\.", ",", as.character.default(Percent)))
+    }
+    return(x)}
+}
+
+}
+
+#Definisanje funkcije koja za kreiranje palete
+
+palete_for_chapters <- function(Chapter) {
+  palet <-
+    c(
+      "9" = "#de2d26",
+      "2" = "#636363",
+      "20" = "#8DD3C7",
+      "5" = "#FFFFB3",
+      "6" = "#BEBADA",
+      "3" = "#FB8072",
+      "10" = "#80B1D3",
+      "12" = "#FDB462",
+      "1" = "#B3DE69",
+      "4" = "#FCCDE5",
+      "13" = "#D9D9D9",
+      "14" = "#BC80BD",
+      "18" = "#CCEBC5",
+      "8" = "#FFED6F",
+      "21" = "#7FC97F",
+      "15" = "#BEAED4",
+      "11" = "#FDC086",
+      "16" = "#FFFF99",
+      "22" = "#386CB0",
+      "17" = "#F0027F",
+      "19" = "#BF5B17",
+      "7" = "#666666"
+    )
+  palet_for_c <-  c()
+  for(i in unique(Chapter)){
+    palet_for_c <- c(palet_for_c, palet[i])
+  }
+  return(unname(unlist(palet_for_c)))
+  
+}
+
+#Omotačka funkcija za lakšu produkciju treemap vizualizacije
+
+create_treemap <- function(mortalitydataframe=NULL,diagnosisdataframe=NULL,sr=T,  size_col =NULL, category_col =NULL, title_col=NULL, aspect.ratio=1.5, width=5670, height=3780) {
+  treefilename<- paste0(paste0(deparse(substitute(mortalitydataframe))),"treemap.png")
+  print(treefilename)
+
+  mortalitydataframe<- left_join(mortalitydataframe, diagnosisdataframe)
+  treemapdata <-mortalitydataframe %>% prep_for_treemap(sr=sr, size_col =size_col,category_col = category_col , title_col = title_col)
+
+  paleta<-  treemapdata %>% arrange(Order) %>% pull(Color) %>% unique
+  png(filename = treefilename,width=width, height=height)
+  treemap(dtf=treemapdata, index=c(title_col, size_col), vSize=size_col, vColor = "Order", type = "manual", 
+          palette=paleta,
+          title = "",
+          range=c(1,length(paleta)),
+          fontfamily.labels=c("sans","sans"),
+          fontsize.labels=c(6,2),
+          aspRatio=aspect.ratio,
+          align.labels=list(c("center", "center"), c("right", "bottom")),
+          overlap.labels=0.1,
+          bg.labels=0,
+          lowerbound.cex.labels=0.1,
+          border.lwds=0.5,
+          inflate.labels = T,
+          border.col = "white",
+          algorithm= "pivotSize",
+          sortID= "color",
+          position.legend	="none",
+          #format.legend= "Chapter"
+  )
+  dev.off()
+  
+}
+
+
+#Pripremanje mortalitetnih podatak 
+umrli_YPLL_TOTAL_2017_2019<- umrli %>% filter(
+  Godina.materijala %in% c(2017:2019),
+  Starost < YPLL_Age
+) %>%
+  mutate(YPLL = (YPLL_Age - Starost) * Broj.pojava, Cause=substring(Uzrok.smrti,1,3)) %>% group_by(Cause) %>% summarise(YPLL = round(sum(YPLL)/3,1))
+umrli_YPLL_TOTAL_2017_2019$Cause <- factor(umrli_YPLL_TOTAL_2017_2019$Cause)
+create_treemap(mortalitydataframe = umrli_YPLL_TOTAL_2017_2019,diagnosisdataframe = d, sr=T, size_col ="YPLL",category_col = "Chapter", title_col = "TilteSR")
+
+
+umrli_YPLL_TOTAL_2017_2019m<- umrli %>% filter(
+  Pol=="1",
+  Godina.materijala %in% c(2017:2019),
+  Starost < YPLL_Age,
+) %>%
+  mutate(YPLL = (YPLL_Age - Starost) * Broj.pojava, Cause=substring(Uzrok.smrti,1,3)) %>% group_by(Cause) %>% summarise(YPLL = round(sum(YPLL)/3,1))
+umrli_YPLL_TOTAL_2017_2019m$Cause <- factor(umrli_YPLL_TOTAL_2017_2019m$Cause)
+
+umrli_YPLL_TOTAL_2017_2019f<- umrli %>% filter(
+  Pol=="2",
+  Godina.materijala %in% c(2017:2019),
+  Starost < YPLL_Age,
+) %>%
+  mutate(YPLL = (YPLL_Age - Starost) * Broj.pojava, Cause=substring(Uzrok.smrti,1,3)) %>% group_by(Cause) %>% summarise(YPLL = round(sum(YPLL)/3,1))
+umrli_YPLL_TOTAL_2017_2019f$Cause <- factor(umrli_YPLL_TOTAL_2017_2019f$Cause)
+
+create_treemap(mortalitydataframe = umrli_YPLL_TOTAL_2017_2019m,diagnosisdataframe = d, sr=T, size_col ="YPLL",category_col = "Chapter", title_col = "TilteSR",aspect.ratio = 1.5, height = 2520, width = 3780)
+create_treemap(mortalitydataframe = umrli_YPLL_TOTAL_2017_2019f,diagnosisdataframe = d, sr=T, size_col ="YPLL",category_col = "Chapter", title_col = "TilteSR",aspect.ratio = 0.84, height =2520, width = 2117)
+
+
+
+```
 ```{r airpolution, message=FALSE, warning=FALSE}
 library(raster)
 library(rasterVis)
@@ -1130,3 +1320,6 @@ library(profmem)
 SerbiaPolution
 
 ```
+
+
+
