@@ -16,7 +16,7 @@ U doktrorskoj diesrtaciji su korišćeni detaljni podaci o smrti u Srbiji za 6 g
 Datoteka za svaku godinu ima više od 80.000 redova podataka jer su podaci dati po polu, starosti, opštini i tačnom (četvroznačnom) uzroku smrti.
 U pripremi podatka prvo ih objedinjujemo u jedan veliki dataframe i nakon toga svaki red svrtstavamo po kategorijama Međunarodne kategorizacije bolesti i prema tome da li su uzroci smrti oni koji se mogu izbeći, preventabilni ili predupredivi.
 
-```{r data_consolidation, message=FALSE, warning=FALSE}
+```{r data_consolidation, message=FALSE, warning=FALSE, fig.show='hide'}
 require(tidyverse)
 require(iterators)
 require(openxlsx)
@@ -28,6 +28,9 @@ require(ggthemes)
 require(geojsonio)
 require(ggpubr)
 require(treemap)
+
+#library(rasterVis)
+
 
 #Učitavamo datoteke
 mort_podaci_postoje <- file.exists("umrli15-20.xslx")
@@ -191,7 +194,7 @@ opstine <- read.csv(file = "Serbia Map/opstine.csv")
 
 ```
 ##Definisanje funkcije za izračunavanje medijalne starosti izgubljenih godina potencijalnog života
-```{r median_indicators, message=FALSE, warning=FALSE}
+```{r median_indicators, message=FALSE, warning=FALSE, fig.show='hide'}
 
 FindMedian <- function(x) {
   intervals <- cbind(1:length(x)-1, 1:length(x))
@@ -216,7 +219,7 @@ U prvomd delu se učitavaju podaci o populaciji koji se mogu preuzeti sa portala
 Takođe je U ovom delu je dato računanje pokazatelja izgubljenih godina potencijalnog života.
 
 
-```{r standardization, message=FALSE, warning=FALSE }
+```{r standardization, message=FALSE, warning=FALSE, fig.show='hide' }
 #Učitavanja podataka o standardnoj evropskoj populaciji
 standpop <- read.xlsx("StPopSingleYear.xlsx")
 knitr::kable(standpop)
@@ -229,6 +232,12 @@ standpop$stpop <- standpop$stpop / 1000000
 standardpop75 <- standpop[1:75, ]
 standardpop75$stpop <-(standpop$stpop[1:75] / sum(standpop$stpop[1:75]) * (sum(standpop$stpop) - sum(standpop$stpop[1:75]))) + standpop$stpop[1:75]
 colnames(standardpop75)[1] <- "Starost"
+
+#Kreiranje pondera za mlađe od 75 godina a starije od 30 na osnovu standardne populacije koja ide do 85 godina.
+standardpop30_75 <-  standpop[31:75, ]
+standardpop30_75$stpop <-(standpop$stpop[31:75] / sum(standpop$stpop[31:75]) * (sum(standpop$stpop) - sum(standpop$stpop[31:75]))) + standpop$stpop[31:75]
+colnames(standardpop30_75)[1] <- "Starost"
+
 
 #Definisanje referentnog godišta za računanje pokazatelja izgubljenih godina potencijalnog života
 YPLL_Age <- 75
@@ -341,7 +350,7 @@ standardized_YPLL_TOTAL_2017_2019 <- left_join(
 ##Tabela o generalnim informacijama o prevremenom mortalitetu
 
 
-```{r opsti_prevremeni, message=FALSE, warning=FALSE }
+```{r opsti_prevremeni, message=FALSE, warning=FALSE, fig.show='hide' }
 
 serbia_overall_premature <- left_join(
   umrli %>% filter(Starost < YPLL_Age) %>%
@@ -352,7 +361,7 @@ knitr::kable(serbia_overall_premature)
 
 ```
 
-```{r YPLL, message=FALSE, warning=FALSE}
+```{r YPLL, message=FALSE, warning=FALSE, fig.show='hide', fig.show='hide'}
 
 #Populacija Srbije
 popsr2020 <-
@@ -526,43 +535,9 @@ standardized_YPLL_TOTAL  %>% group_by() %>% summarise(CV = sd(YPLLR) /
                                                         mean(YPLLR))
 
 
-#CPL
-
-GDPPC2020 <- 7742
-
-YPPLL <-
-  umrli %>% filter(Godina.materijala == 2020,
-                   Uzrok.smrti %in% c("U071", "U072")) %>% filter((Pol == "2" &
-                                                                     Starost < 15)) %>% group_by() %>%  summarise(sum(Broj.pojava)) * (63 -
-                                                                                                                                         15) +
-  umrli %>% filter(Godina.materijala == 2020,
-                   Uzrok.smrti %in% c("U071", "U072")) %>% filter((Pol == "1" &
-                                                                     Starost < 15)) %>% group_by() %>%  summarise(sum(Broj.pojava)) * (65 -
-                                                                                                                                         15) +
-  
-  
-  umrli %>% filter(Godina.materijala == 2020,
-                   Uzrok.smrti %in% c("U071", "U072")) %>% filter((Pol == "1" &
-                                                                     Starost >= 15 &
-                                                                     Starost < 65)) %>%  mutate(YPLL = (YPLL_Age - Starost) * Broj.pojava) %>% group_by() %>% summarise(YPLL = sum(YPLL)) +
-  
-  umrli %>% filter(Godina.materijala == 2020,
-                   Uzrok.smrti %in% c("U071", "U072")) %>% filter((Pol == "2" &
-                                                                     Starost >= 15 &
-                                                                     Starost < 63)) %>%  mutate(YPLL = (YPLL_Age - Starost) * Broj.pojava) %>% group_by() %>% summarise(YPLL = sum(YPLL))
-
-#
-CPL = YPPLL * GDPPC2020
-
-
-#Correlation test
-forcor <-
-  left_join(standardized_YPLL_NoN_Covid, standardized_YPLL_Covid, by = "Opstina")
-cor.test(forcor$YPLLR.x, forcor$YPLLR.y, method = "spearman") 
-
 ```
 
-```{r specificne_stope_smrtnosti_COVID,  message=FALSE, warning=FALSE}
+```{r specificne_stope_smrtnosti_COVID,  message=FALSE, warning=FALSE, fig.show='hide'}
 
 
 ss_starost_covid <- left_join(
@@ -774,7 +749,7 @@ ggsave(ypll_ages_1719_preventable_plot,
 ##GIS Analiza
 U ovom delu koristimo moranov globalni i lokalni indeks.
 
-```{r GIS i kartiranje, message=FALSE, warning=FALSE}
+```{r GIS i kartiranje, message=FALSE, warning=FALSE, fig.show='hide'}
 
 
 
@@ -845,7 +820,8 @@ buildMap <-
            variable = NULL,
            paleta = NULL,
            direction = 1,
-           save_map = T) {
+           save_map = T,
+           legend_title="Godina na\n100.000 < 75") {
         l2<- sort(motality_dataframe[,variable] %>% unlist %>% unname) %>% tail(2)
 
     ggplotdata <-
@@ -884,7 +860,7 @@ buildMap <-
           frame.colour = "#808080",
           ticks = T,
           even.steps = T,
-          title = "Godina na\n100.000 < 75"
+          title = legend_title
         )
       ) +
       theme_tufte() + theme(
@@ -1068,7 +1044,7 @@ Serbia@data$wageNet <- left_join(Serbia@data,zaradaOpstina %>% filter(skrIndikat
 
 #Računaje koefijenta korelacije izemđu gustine naseljenosti i nivoa YPLLi
 
-cortestdata<- left_join(Serbia@data %>% mutate(code=as.character(code)), standardized_YPLL_TOTAL_2017_2019, by=c("code"="Opstina"))
+cortestdata<- left_join(Serbia@data %>% mutate(code=as.character(code)), standardized_YPLL_TOTAL_2017_2019fixed, by=c("code"="Opstina"))
 
 cor.test(cortestdata$Pop/cortestdata$area,cortestdata$YPLLi,method = "spearman")
 cortestdata$density <- cortestdata$Pop/cortestdata$area
@@ -1082,6 +1058,10 @@ Serbia@data$pop <- cortestdata$Pop
 Serbia@data$YPLLi20172019Total <- cortestdata$YPLLi20172019Total
 Serbia@data$YPLLiSARS <- left_join(Serbia@data %>% mutate(code=as.character(code)), standardized_YPLL_Covid, by=c("code"="Opstina")) %>% pull(YPLLi)
 Serbia@data$YPLLi20172019avoidable <- left_join(Serbia@data %>% mutate(code=as.character(code)), standardized_YPLL_Avoidable_2017_2019, by=c("code"="Opstina")) %>% pull(YPLLi)
+
+Serbia@data$YPLLi20172019preventable <- left_join(Serbia@data %>% mutate(code=as.character(code)), standardized_YPLL_Preventable_2017_2019, by=c("code"="Opstina")) %>% pull(YPLLi)
+Serbia@data$YPLLi20172019amenable <- left_join(Serbia@data %>% mutate(code=as.character(code)), standardized_YPLL_Amenable_2017_2019, by=c("code"="Opstina")) %>% pull(YPLLi)
+
 Serbia@data$YPLLi20172019respiratory <- left_join(Serbia@data %>% mutate(code=as.character(code)), standardized_YPLL_respiratory_2017_2019, by=c("code"="Opstina")) %>% pull(YPLLi)
 
 
@@ -1134,7 +1114,7 @@ getscatterplot(mortalitydataframe = standardized_YPLL_TOTAL, map = Serbia,x= "lo
 
 ```
 
-```{r avoidable_trend, message=FALSE, warning=FALSE}
+```{r avoidable_trend, message=FALSE, warning=FALSE, fig.show='hide'}
 #Gender
 popsr2020m <-
   pop %>% filter(god == 2020,!IDStarost %in% c("0", "V85"), IDTer == "RS", IDPol ==
@@ -1259,7 +1239,7 @@ levels(sex_avoidable_years$Cause) <- c("SARS-CoV-2", "Ostali", "Moguće izbeći"
   
 
 ```
-```{r causes_and_treemaps, message=FALSE, warning=FALSE}
+```{r causes_and_treemaps, message=FALSE, warning=FALSE, fig.show='hide'}
 
 #Učitavanje podataka o dijagnozama 
 
@@ -1466,19 +1446,27 @@ umrli_YPLL_Amenable_2017_2019$Cause <- factor(umrli_YPLL_Amenable_2017_2019$Caus
 create_treemap(mortalitydataframe = umrli_YPLL_Amenable_2017_2019,diagnosisdataframe = d, sr=T, size_col ="YPLL",category_col = "Chapter", title_col = "TilteSR")
 
 
+d<- rbind(d,c(22, 103, "U07", "SARS-CoV-2", "SARS-CoV-2"))
+
+umrli_YPLL_2020<- umrli %>% filter(
+  Godina.materijala %in% c(2020),
+  Starost < YPLL_Age
+) %>%
+  mutate(YPLL = (YPLL_Age - Starost) * Broj.pojava, Cause=substring(Uzrok.smrti,1,3)) %>% group_by(Cause) %>% summarise(YPLL = round(sum(YPLL),1))
+
+umrli_YPLL_2020$Cause <- factor(umrli_YPLL_2020$Cause)
+
+create_treemap(mortalitydataframe = umrli_YPLL_2020,diagnosisdataframe = d, sr=T, size_col ="YPLL",category_col = "Chapter", title_col = "TilteSR")
+
+
 
 
 
 
 ```
-```{r airpolution, message=FALSE, warning=FALSE}
-library(raster)
-    require(sp)
-    require(rgdal)
-library(rasterVis)
-library(viridis)
-library(profmem)
+```{r airpolution, message=FALSE, warning=FALSE, fig.show='hide'}
 
+require(sp)
 
 #GIS podaci o PM2.5 zagađenju na celoj Zemlji, preuzeto sa https://sedac.ciesin.columbia.edu/data/set/sdei-global-annual-gwr-pm2-5-modis-misr-seawifs-aod
 
@@ -1511,17 +1499,64 @@ WeigthedPolution_stats<- lapply(WeigthedPolution_stats, FUN=sum,na.rm=TRUE)
 urban_stats<- raster::extract(urban, Serbia)
 urban_stats<- lapply(urban_stats, FUN=sum,na.rm=TRUE)
 
+Serbia@data$pm25 <- WeigthedPolution_stats %>% unlist / urban_stats %>% unlist
+
+m_d_f_p<- Serbia@data %>% mutate(Opstina=as.character(code)) %>% dplyr::select(Opstina, pm25)
+                                 
+  buildMap(
+    map = Serbia,
+    foritfied_map = SRMAP,
+    motality_dataframe =m_d_f_p,
+    variable = "pm25",
+    paleta = "Greys",
+    legend_title = "PM2.5 na mg/m3"
+  )
+  
+Serbia@data<- cbind(Serbia@data , left_join(m_d_f_p,
+ umrli %>% filter(Godina.materijala %in% c(2017:2019),
+                 Starost>30,
+                Starost < YPLL_Age) %>%
+    mutate(YPLL = (YPLL_Age - Starost) * Broj.pojava) %>% group_by(Opstina) %>% summarise(YPLL=sum(YPLL)/3, Broj=sum(Broj.pojava)/3) %>% mutate(code=as.numeric(Opstina))) %>% mutate(YPLLpm2.5=(pm25/10*6.2*YPLL)/100, BrojPM25=(pm25/10*6.2*Broj)/100) %>%  select(YPLLpm2.5, BrojPM25))
+
+
+standardized_mortality_pm25 <- 
+  left_join(
+  left_join(
+    left_join(
+        pop %>% filter(god %in%  c(2017:2019) , nPol == "Ukupno",!IDStarost %in% c("0", "V85")) %>% mutate(Starost = as.integer(IDStarost)) %>% filter(Starost < YPLL_Age, Starost>30) %>% group_by(Opstina = IDTer, Starost) %>% summarise(Pop = sum(vrednost)),
+        umrli %>% filter(Godina.materijala %in% c(2017:2019),
+                         Starost < YPLL_Age,Starost>30 ) %>% 
+          mutate(Broj.pojava = ifelse(is.na(Broj.pojava), 0, Broj.pojava)) %>% 
+          mutate(YPLL = (YPLL_Age - Starost) * Broj.pojava) %>%
+          group_by(Opstina, Starost) %>% summarise(YPLL = sum(YPLL), Broj.pojava = sum(Broj.pojava, na.rm = T))) %>% mutate(YPLL = ifelse(is.na(YPLL), 0, YPLL)) %>% mutate(YPLLR = (YPLL) /Pop * 100000), standardpop30_75),m_d_f_p) %>% 
+  group_by(Opstina) %>% summarise(
+    Median_AGE_YPLL=FindMedian(YPLL),
+    YPLLi = sum(((pm25/10*6.2)/100)*YPLLR * stpop, na.rm = T),
+    YPLLR = sum(((pm25/10*6.2)/100*YPLL) / sum(Pop) * 100000,
+    Pop = sum(Pop)/3),
+    YPLL = sum(((pm25/10*6.2)/100)*YPLL)/3,
+    Broj.pojava = sum(((pm25/10*6.2)/100)*Broj.pojava, na.rm = T)/3,
+    )
+                                       
+ 
+  buildMap(
+    map = Serbia,
+    foritfied_map = SRMAP,
+    motality_dataframe =standardized_mortality_pm25,
+    variable = "YPLLi",
+    paleta = "Greens",
+    legend_title = "Godina na\n100.000 30-75"
+  )
+ 
+  Serbia@data$YPLLi17_19_PM25 <- left_join(Serbia@data %>% mutate(Opstina=as.character(code)), standardized_mortality_pm25)$YPLLi
+
+
 # Serbia@data$pm25 <- WeigthedPolution_stats %>% unlist / urban_stats %>% unlist
 # 
 # 
 # Serbia@data$pm25
 # 
-# Zagadjenje <- left_join(Serbia@data, 
-# 
-#  umrli %>% filter(Godina.materijala %in% c(2017:2019),
-#                  Starost>30,
-#                 Starost < YPLL_Age) %>%
-#     mutate(YPLL = (YPLL_Age - Starost) * Broj.pojava) %>% group_by(Opstina) %>% summarise(YPLL=sum(YPLL)/3, Broj=sum(Broj.pojava)/3) %>% mutate(code=as.numeric(Opstina))) %>% mutate(YPLLpm2.5=(pm25/10*6.2*YPLL)/100, BrojPM25=(pm25/10*6.2*Broj)/100) 
+
 # 
 # lm(Zagadjenje, formula = pm25~log(wageNet)+log(pop)) 
 # 
@@ -1540,11 +1575,148 @@ urban_stats<- lapply(urban_stats, FUN=sum,na.rm=TRUE)
 # urban_stats<- lapply(urban_stats, FUN=sum,na.rm=TRUE)
 # WeigthedPolution_stats %>% unlist / urban_stats %>% unlist
 # 
-# Causes_AirPolution<- c( paste0("I60",0:9 ),paste0("I61",0:9 ),paste0("I62",0:9 ), paste0("I63",0:9 ),paste0("I64",0:9 ), paste0("I65",0:9 ), paste0("I66",0:9 ), paste0("I67",0:9 ), paste0("I69",0:3 ),paste0("I20",0:9 ),paste0("I21",0:9 ), paste0("I22",0:9 ), paste0("I23",0:9 ), paste0("I24",0:9 ),paste0("I25",0:9 ),paste0("J40",0:9 ),paste0("J41",0:9 ),paste0("J42",0:9 ),paste0("J43",0:9 ),paste0("J44",0:9 ) ,paste0("J47",0:9 ),paste0("C33",0:9 ),paste0("C34",0:9 ), paste0("D02",1:2 ), "D381" )
+ Causes_AirPolution<- c( paste0("I60",0:9 ),paste0("I61",0:9 ),paste0("I62",0:9 ), paste0("I63",0:9 ),paste0("I64",0:9 ), paste0("I65",0:9 ), paste0("I66",0:9 ), paste0("I67",0:9 ), paste0("I69",0:3 ),paste0("I20",0:9 ),paste0("I21",0:9 ), paste0("I22",0:9 ), paste0("I23",0:9 ), paste0("I24",0:9 ),paste0("I25",0:9 ),paste0("J40",0:9 ),paste0("J41",0:9 ),paste0("J42",0:9 ),paste0("J43",0:9 ),paste0("J44",0:9 ) ,paste0("J47",0:9 ),paste0("C33",0:9 ),paste0("C34",0:9 ), paste0("D02",1:2 ), "D381" )
 # 
+
+standardized_YPLL_aeropolution<- stadnardize_ypll(umrli, pop, standardpop75, c(2017:2019),YPLL_Age,causes='substring(Uzrok.smrti,1,3) %in% c("J40", "J41", "J42", "J43", "J44")') 
+
+  Serbia@data$YPLLi17_19_aero <-   left_join(Serbia@data %>% mutate(Opstina=as.character(code)), standardized_YPLL_aeropolution)$YPLLi
+ 
+
+
+
 
 
 ```
+```{r correlation, message=FALSE, warning=FALSE, fig.show='hide'}
 
+# cordata<- Serbia@data %>% select('YPLLi 2017-2019'= YPLLi17_19,'Me Starost YPLL 2017-2019'= MedianAgeYPLL17_19, 'Izbežni YPLLi 2017-2019'=YPLLi20172019avoidable,'Preventabilni YPLLi 2017-2019'= YPLLi20172019preventable, 'Predupredivi YPLLi 2017-2019'=YPLLi20172019amenable, 'SARS-CoV-2 YPLLi 2020'=YPLLiSARS, 'PM25 YPLLi 2017-2019'= YPLLi17_19_PM25, 'Neto plata'= wageNet ,'Gustina naseljenosti'=density, 'PM2.5'= pm25 ) 
+# 
+# cormat<-cordata %>% cor(method = "spearman")
+# pmat<- cordata %>% rstatix::cor_pmat(,
+#                                      method = "spearman")
+# pmat$rowname <- NULL
+# rownames(pmat) <- pmat %>% colnames()
+# 
+# 
+#   get_lower_tri<-function(cormat){
+#     cormat[upper.tri(cormat)] <- NA
+#     return(cormat)
+#   }
+#   # Get upper triangle of the correlation matrix
+#   get_upper_tri <- function(cormat){
+#     cormat[lower.tri(cormat)]<- NA
+#     return(cormat)
+#   }
+# 
+# #cormat <- reorder_cormat(cormat)
+# upper_tri <- get_upper_tri(cormat)
+# upper_tri_pmat <- get_upper_tri(pmat)
+# # Melt the correlation matrix
+# melted_cormat <- reshape2::melt(upper_tri, na.rm = TRUE)
+# melted_pmat <- reshape2::melt(upper_tri_pmat, na.rm = TRUE)
+# 
+# melted_cormat$pvalue <- melted_pmat$value
+# # Create a ggheatmap
+# ggheatmap <- ggplot(melted_cormat, aes(Var2, Var1, fill = value))+
+#  geom_tile(color = "white")+
+#  scale_fill_gradient2(low = "#1f78b4", high = "#e31a1c", mid = "white", 
+#    midpoint = 0, limit = c(-1,1), space = "Lab", 
+#     name="Spirmanov koeficijent\nkorelacije") +
+#   theme_tufte()+ # minimal theme
+#  theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+#     size = 12, hjust = 1))+
+#  coord_fixed()
+# # Print the heatmap
+# 
+# final_cormat_heatmap<- ggheatmap + 
+# geom_text(aes(Var2, Var1, label = gsub(pattern = '[.]', replacement = ',',x = round(value,2)),alpha=ifelse(pvalue<0.05, 1,0)), color = "#000000",guide="none", size = 4) +
+# theme(
+#   axis.title.x = element_blank(),
+#   axis.title.y = element_blank(),
+#   panel.grid.major = element_blank(),
+#   panel.border = element_blank(),
+#   panel.background = element_blank(),
+#   axis.ticks = element_blank(),
+#   legend.justification = c(1, 0),
+#   legend.position = c(0.6, 0.7),
+#   legend.direction = "horizontal")+
+#   guides(fill = guide_colorbar(barwidth = 7, barheight = 1,
+#                 title.position = "top", title.hjust = 0.5))+ scale_alpha(guide = 'none')
+# 
+# ggsave(final_cormat_heatmap,
+#         filename =  paste0(deparse(substitute(
+#           final_cormat_heatmap
+#         )), ".png"),
+#         units = "mm",
+#         width = 160,
+#         height = 160,
+#         dpi = 600
+#       )
+
+
+#lm(data=Serbia@data, formula = YPLLi17_19~log(density)+pm25:log(density)) %>% summary
+
+#lm(data=Serbia@data, formula = YPLLiSARS~YPLLi17_19+pm25+log(density)+pm25:YPLLi17_19+log(density):YPLLi17_19) %>% plot
+
+# partykit::lmtree(data=Serbia@data, formula = YPLLi17_19~ pm25|wageNet|density) %>% summary
+# 
+# a <- glm(YPLLi17_19~pm25, data = Serbia@data)
+# b<- glmulti::glmulti(a)
+# glmulti::glmulti(y="YPLLiSARS",xr=c("YPLLi17_19", "pm25", "log(wageNet)", "log(density)"),data=Serbia@data)
+# 
+# require(mgcv)
+# gam(data=Serbia@data, formula = YPLLi17_19~pm25+s(wageNet)) %>% plot
+# 
+#        lm(data=Serbia@data, formula = YPLLi17_19~pm25) %>% summary
+
+```
+
+```{r ekonomska_cena, message=FALSE, warning=FALSE}
+
+
+
+ypll_prod <- function(mdf, years, causes) {
+  
+
+    mdf %>% filter(
+      Godina.materijala %in% years,
+      if(!is.null(causes)){eval(parse(text = causes))} else {!Uzrok.smrti %in% c()}
+    ) %>% filter((Pol=="2" & Starost<15)) %>% group_by() %>%  summarise(sum(Broj.pojava))*(63-15)+
+    mdf %>% filter(
+      Godina.materijala %in% years,
+     if(!is.null(causes)){eval(parse(text = causes))} else {!Uzrok.smrti %in% c()}
+    ) %>% filter((Pol=="1" & Starost<15)) %>% group_by() %>%  summarise(sum(Broj.pojava))*(65-15)+
+    
+
+    mdf %>% filter(
+      Godina.materijala  %in% years,
+     if(!is.null(causes)){eval(parse(text = causes))} else {!Uzrok.smrti %in% c()}
+    ) %>% filter((Pol=="1" & Starost>=15 & Starost<65)) %>%  mutate(YPLL = (YPLL_Age - Starost) * Broj.pojava) %>% group_by() %>% summarise(YPLL = sum(YPLL))+
+    
+    mdf %>% filter(
+      Godina.materijala  %in% years,
+      if(!is.null(causes)){eval(parse(text = causes))} else {!Uzrok.smrti %in% c()}
+    ) %>% filter((Pol=="2" & Starost>=15 & Starost<63)) %>%  mutate(YPLL = (YPLL_Age - Starost) * Broj.pojava) %>% group_by() %>% summarise(YPLL = sum(YPLL))
+}
+
+    #Ekonomska cena SARS-CoV-2    
+    
+ypll_prod( umrli, c(2015), "Avoidable==1")+
+ypll_prod( umrli, c(2016), "Avoidable==1")+
+ypll_prod( umrli, c(2017), "Avoidable==1")+
+ypll_prod( umrli, c(2018), "Avoidable==1")+
+ypll_prod( umrli, c(2019), "Avoidable==1")+
+ypll_prod( umrli, c(2020), "Avoidable==1")
+
+
+ypll_prod( umrli, c(2015), "Starost>30")
+ypll_prod( umrli, c(2016), "Starost>30")
+ypll_prod( umrli, c(2017), "Starost>30")
+ypll_prod( umrli, c(2018), "Starost>30")
+ypll_prod( umrli, c(2019), "Starost>30")
+ypll_prod( umrli, c(2020), "Starost>30")
+
+```
 
 
