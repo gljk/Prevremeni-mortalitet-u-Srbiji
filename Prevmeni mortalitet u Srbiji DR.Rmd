@@ -3,18 +3,22 @@ title: "Prevremeni mortalitet u Srbiji"
 author: "Marko Galjak"
 date: "1/1/2022"
 output:
-  word_document: default
+  word_document: 
+    highlight: monochrome
   html_document: default
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+library(knitr)
+thm<- knit_theme$get("greyscale2")
+knit_theme$set(thm)
 ```
 
 ## R kod korišćen za sređivanje podataka
-U doktrorskoj diesrtaciji su korišćeni detaljni podaci o smrti u Srbiji za 6 godina od 2015. do 2020. godine
+U doktorskoj disertaciji su korišćeni detaljni podaci o smrti u Srbiji za 6 godina od 2015. do 2020. godine
 Datoteka za svaku godinu ima više od 80.000 redova podataka jer su podaci dati po polu, starosti, opštini i tačnom (četvroznačnom) uzroku smrti.
-U pripremi podatka prvo ih objedinjujemo u jedan veliki dataframe i nakon toga svaki red svrtstavamo po kategorijama Međunarodne kategorizacije bolesti i prema tome da li su uzroci smrti oni koji se mogu izbeći, preventabilni ili predupredivi.
+U pripremi podatka prvo ih objedinjujemo u jedan veliki dataframe i nakon toga svaki red svrstavamo po kategorijama Međunarodne kategorizacije bolesti i prema tome da li su uzroci smrti oni koji se mogu izbeći, preventabilni ili predupredivi.
 
 ```{r data_consolidation, message=FALSE, warning=FALSE, fig.show='hide'}
 require(tidyverse)
@@ -28,9 +32,6 @@ require(ggthemes)
 require(geojsonio)
 require(ggpubr)
 require(treemap)
-
-#library(rasterVis)
-
 
 #Učitavamo datoteke
 mort_podaci_postoje <- file.exists("umrli15-20.xslx")
@@ -193,7 +194,7 @@ opstine <- read.csv(file = "Serbia Map/opstine.csv")
 
 
 ```
-##Definisanje funkcije za izračunavanje medijalne starosti izgubljenih godina potencijalnog života
+## Definisanje funkcije za izračunavanje medijalne starosti izgubljenih godina potencijalnog života
 ```{r median_indicators, message=FALSE, warning=FALSE, fig.show='hide'}
 
 FindMedian <- function(x) {
@@ -215,14 +216,13 @@ FindMedian <- function(x) {
 ```
 
 ## Dodavanje podatka o broju stanovnika i računanje pokazatelja YPLL
-U prvomd delu se učitavaju podaci o populaciji koji se mogu preuzeti sa portala otvorenih podataka RZS.
+U prvom delu se učitavaju podaci o populaciji koji se mogu preuzeti sa portala otvorenih podataka RZS.
 Takođe je U ovom delu je dato računanje pokazatelja izgubljenih godina potencijalnog života.
 
 
 ```{r standardization, message=FALSE, warning=FALSE, fig.show='hide' }
 #Učitavanja podataka o standardnoj evropskoj populaciji
 standpop <- read.xlsx("StPopSingleYear.xlsx")
-knitr::kable(standpop)
 
 #svođenje standardne populacije na pondere (tako da zbir ukupne populacije bude 1)
 standpop$stpop <- standpop$stpop / 1000000
@@ -246,12 +246,13 @@ YPLL_Age <- 75
 stadnardize_ypll <- function(umrli=NULL, pop=NULL,standardpopulation=NULL,years=NULL, standard_age=NULL, causes=NULL ) {
 standardized_mortality <- left_join(
     left_join(
-        pop %>% filter(god %in% years , nPol == "Ukupno",!IDStarost %in% c("0", "V85")) %>% mutate(Starost = as.integer(IDStarost)) %>% filter(Starost < YPLL_Age) %>% group_by(Opstina = IDTer, Starost) %>% summarise(Pop = sum(vrednost)), umrli %>% filter(Godina.materijala %in% years, Starost < YPLL_Age,if(!is.null(causes)){eval(parse(text = causes))} else {!Uzrok.smrti %in% c()}) %>% mutate(Broj.pojava = ifelse(is.na(Broj.pojava), 0, Broj.pojava)) %>%  mutate(YPLL = (YPLL_Age - Starost) * Broj.pojava) %>% group_by(Opstina, Starost) %>% summarise(YPLL = sum(YPLL))) %>% mutate(YPLL = ifelse(is.na(YPLL), 0, YPLL)) %>% mutate(YPLLR = YPLL /Pop * 100000), standardpopulation) %>% group_by(Opstina) %>% summarise( 
+        pop %>% filter(god %in% years , nPol == "Ukupno",!IDStarost %in% c("0", "V85")) %>% mutate(Starost = as.integer(IDStarost)) %>% filter(Starost < YPLL_Age) %>% group_by(Opstina = IDTer, Starost) %>% summarise(Pop = sum(vrednost)), umrli %>% filter(Godina.materijala %in% years, Starost < YPLL_Age,if(!is.null(causes)){eval(parse(text = causes))} else {!Uzrok.smrti %in% c()}) %>% mutate(Broj.pojava = ifelse(is.na(Broj.pojava), 0, Broj.pojava)) %>%  mutate(YPLL = (YPLL_Age - Starost) * Broj.pojava) %>% group_by(Opstina, Starost) %>% summarise(YPLL = sum(YPLL), Broj.pojava=sum(Broj.pojava, na.rm = T))) %>% mutate(YPLL = ifelse(is.na(YPLL), 0, YPLL)) %>% mutate(YPLLR = YPLL /Pop * 100000), standardpopulation) %>% group_by(Opstina) %>% summarise( 
                                        Median_AGE_YPLL=FindMedian(YPLL),
                                        YPLLi = sum(YPLLR * stpop, na.rm = T),
                                        YPLLR = sum(YPLL) / sum(Pop) * 100000,
                                        YPLL = sum(YPLL),
-                                       Pop = sum(Pop)
+                                       Pop = sum(Pop),
+                                       Broj.pojava= sum(Broj.pojava, na.rm = T)
 )
 return(standardized_mortality)
 }
@@ -288,6 +289,7 @@ standardized_YPLL_NoN_Covid <- stadnardize_ypll(umrli, pop, standardpop75, c( 20
 #Računanje standardizovanog pokazatelja izgubljenih godina potencijalnog života umrlih 2017-2019
 standardized_YPLL_TOTAL_2017_2019 <- stadnardize_ypll(umrli, pop, standardpop75, c(2017,2018, 2019),YPLL_Age)
 
+
 #Računanje standardizovanog pokazatelja izgubljenih godina potencijalnog života umrlih od uzroka smrti koji se mogu izbeći
 
 standardized_YPLL_Avoidable_2017_2019 <- stadnardize_ypll(umrli, pop, standardpop75, c(2017,2018, 2019),YPLL_Age,causes='Avoidable==1')
@@ -312,6 +314,10 @@ standardized_YPLL_Avoidable_2017_2019 <- stadnardize_ypll(umrli, pop, standardpo
 
 #Računanje standardizovanog pokazatelja izgubljenih godina potencijalnog života umrlih od smrti koje su se NISU mogle izbeći 2017-2019
 standardized_YPLL_NoNAvoidable_2017_2019 <- stadnardize_ypll(umrli, pop, standardpop75, c(2017,2018, 2019),YPLL_Age,causes='Avoidable!=1')
+
+#Računanje standardizovanog pokazatelja izgubljenih godina potencijalnog života umrlih od šloga za  2017-2019
+standardized_YPLL_Stroke <- stadnardize_ypll(umrli, pop, standardpop75, c( 2020),YPLL_Age, causes='substring(Uzrok.smrti,1,3) %in% c("I63")' )
+
 
 #Računanje standardizovanog pokazatelja izgubljenih godina potencijalnog života umrlih od respiratornih bolesti 2017-2019
 standardized_YPLL_respiratory_2017_2019 <- left_join(
@@ -342,12 +348,19 @@ standardized_YPLL_TOTAL_2017_2019 <- left_join(
   Pop = sum(Pop)
 )
 
-#Standardizovane godine izgubljenog života za celu Srbiju 2017-2019
+#Koeficijent varijacije
+standardized_YPLL_Covid %>% group_by() %>% summarise(CV = sd(YPLLi) /
+                                                       mean(YPLLi))
 
+standardized_YPLL_NoN_Covid %>% group_by() %>% summarise(CV = sd(YPLLi) /
+                                                           mean(YPLLi))
+
+standardized_YPLL_Covid  %>% group_by() %>% summarise(CV = sd(YPLLi) /
+                                                        mean(YPLLi))
 
 ```
 
-##Tabela o generalnim informacijama o prevremenom mortalitetu
+## Tabela o generalnim informacijama o prevremenom mortalitetu
 
 
 ```{r opsti_prevremeni, message=FALSE, warning=FALSE, fig.show='hide' }
@@ -357,9 +370,10 @@ serbia_overall_premature <- left_join(
     mutate(YPLL = (YPLL_Age - Starost) * Broj.pojava) %>% group_by(Godina.materijala) %>% summarise(YPLL = sum(YPLL), `Umrli <75` = sum(Broj.pojava)),
   umrli %>% filter() %>% group_by(Godina.materijala) %>% summarise(Ukupno = sum(Broj.pojava))
 ) %>%  mutate(`Umrli <75 (%)` = round(`Umrli <75` / Ukupno * 100, 2))
-knitr::kable(serbia_overall_premature)
+
 
 ```
+## Računanje YPLL za pojedinačne godine
 
 ```{r YPLL, message=FALSE, warning=FALSE, fig.show='hide', fig.show='hide'}
 
@@ -525,19 +539,13 @@ fig2plos
 # ggsave(fig2plos,filename = "figure2plos.jpg", units = "mm", width = 175, height = 50, dpi = 600)
 #
 
-standardized_YPLL_Covid %>% group_by() %>% summarise(CV = sd(YPLLR) /
-                                                       mean(YPLLR))
 
-standardized_YPLL_NoN_Covid %>% group_by() %>% summarise(CV = sd(YPLLR) /
-                                                           mean(YPLLR))
-
-standardized_YPLL_TOTAL  %>% group_by() %>% summarise(CV = sd(YPLLR) /
-                                                        mean(YPLLR))
 
 
 ```
+## Računanje specifičnih stopa smrtnosti i kreiranje grafikona
 
-```{r specificne_stope_smrtnosti_COVID,  message=FALSE, warning=FALSE, fig.show='hide'}
+```{r specificne_stope_smrtnosti,  message=FALSE, warning=FALSE, fig.show='hide'}
 
 
 ss_starost_covid <- left_join(
@@ -746,8 +754,8 @@ ggsave(ypll_ages_1719_preventable_plot,
       )
 
 ```
-##GIS Analiza
-U ovom delu koristimo moranov globalni i lokalni indeks.
+## Kartiranje pokazatelja mortaliteta
+U ovom delu osim kartiranja koristimo moranov globalni i lokalni indeks.
 
 ```{r GIS i kartiranje, message=FALSE, warning=FALSE, fig.show='hide'}
 
@@ -821,7 +829,7 @@ buildMap <-
            paleta = NULL,
            direction = 1,
            save_map = T,
-           legend_title="Godina na\n100.000 < 75") {
+           legend_title="Broj godina na\n100.000 < 75") {
         l2<- sort(motality_dataframe[,variable] %>% unlist %>% unname) %>% tail(2)
 
     ggplotdata <-
@@ -866,7 +874,7 @@ buildMap <-
       theme_tufte() + theme(
         legend.position = c(.80, .85),
         text = element_text(size = 10,  family = "TT Arial"),
-        legend.title = element_text(margin = margin(b = 10, unit = "pt"))
+        legend.title = element_text(size = 8, margin = margin(b = 10, unit = "pt"))
       ) +
       xlab(NULL) + ylab(NULL) + theme(
         axis.title.x = element_blank(),
@@ -1028,9 +1036,14 @@ buildMap(
     paleta = "OrRd"
   )
   
+```
 
-   b<- standardized_YPLL_Avoidable_2017_2019[standardized_YPLL_Avoidable_2017_2019$Opstina!="71226",]
-# Procena površine opština 
+
+## U narednom delu dodajemo dodatne podatke koje ćemo koristiti za korelacionu analizu
+
+```{r dodatni_podaci, message=FALSE, warning=FALSE, fig.show='hide'}
+#b<- standardized_YPLL_Avoidable_2017_2019[standardized_YPLL_Avoidable_2017_2019$Opstina!="71226",]
+#Procena površine opština 
    
 Serbia@data$area <- raster::area(Serbia)/1000000
 
@@ -1049,6 +1062,12 @@ cortestdata<- left_join(Serbia@data %>% mutate(code=as.character(code)), standar
 cor.test(cortestdata$Pop/cortestdata$area,cortestdata$YPLLi,method = "spearman")
 cortestdata$density <- cortestdata$Pop/cortestdata$area
 
+#Testiranje korelacije prevremene smrtnosti od isključivo prevrentabilnih i isključivo preudpredivih smrti 
+cor.test(stadnardize_ypll(umrli, pop, standardpop75, c(2020),YPLL_Age,causes='Preventable==1 & Amenable!=1')$YPLLi,stadnardize_ypll(umrli, pop, standardpop75, c(2020),YPLL_Age,causes='Preventable!=1 & Amenable==1')$YPLLi, method="spearman")
+standardized_YPLL_Avoidable$AmenPrevRankDiff <- rank(stadnardize_ypll(umrli, pop, standardpop75, c(2020),YPLL_Age,causes='Preventable==1 & Amenable!=1')$YPLLi)- rank(stadnardize_ypll(umrli, pop, standardpop75, c(2020),YPLL_Age,causes='Preventable!=1 & Amenable==1')$YPLLi) %>% abs
+Serbia@data$AmenPrevRankDiff<- left_join(Serbia@data %>% mutate(code=as.character(code)), standardized_YPLL_Avoidable, by=c("code"="Opstina"))$AmenPrevRankDiff
+
+
 Serbia@data$YPLL17_19 <- cortestdata$YPLL/3
 Serbia@data$MedianAgeYPLL17_19 <- cortestdata$Median_AGE_YPLL
 Serbia@data$density <-  cortestdata$Pop/cortestdata$area
@@ -1058,14 +1077,24 @@ Serbia@data$pop <- cortestdata$Pop
 Serbia@data$YPLLi20172019Total <- cortestdata$YPLLi20172019Total
 Serbia@data$YPLLiSARS <- left_join(Serbia@data %>% mutate(code=as.character(code)), standardized_YPLL_Covid, by=c("code"="Opstina")) %>% pull(YPLLi)
 Serbia@data$YPLLi20172019avoidable <- left_join(Serbia@data %>% mutate(code=as.character(code)), standardized_YPLL_Avoidable_2017_2019, by=c("code"="Opstina")) %>% pull(YPLLi)
+Serbia@data$YPLL20172019avoidable <- left_join(Serbia@data %>% mutate(code=as.character(code)), standardized_YPLL_Avoidable_2017_2019, by=c("code"="Opstina")) %>% pull(YPLL)/3
 
+Serbia@data$Broj20172019avoidableBroj <- left_join(Serbia@data %>% mutate(code=as.character(code)), standardized_YPLL_Avoidable_2017_2019, by=c("code"="Opstina")) %>% pull(Broj.pojava)
+
+#Serbia@data$Broj20172019TotalBroj <- left_join(Serbia@data %>% mutate(code=as.character(code)), standardized_YPLL_TOTAL_2017_2019, by=c("code"="Opstina")) %>% pull(Broj.pojava)
+Serbia@data$BrojSARS <- left_join(Serbia@data %>% mutate(code=as.character(code)), standardized_YPLL_Covid, by=c("code"="Opstina")) %>% pull(Broj.pojava)
+Serbia@data$YPLLSARS <- left_join(Serbia@data %>% mutate(code=as.character(code)), standardized_YPLL_Covid, by=c("code"="Opstina")) %>% pull(YPLL)
+
+  
 Serbia@data$YPLLi20172019preventable <- left_join(Serbia@data %>% mutate(code=as.character(code)), standardized_YPLL_Preventable_2017_2019, by=c("code"="Opstina")) %>% pull(YPLLi)
 Serbia@data$YPLLi20172019amenable <- left_join(Serbia@data %>% mutate(code=as.character(code)), standardized_YPLL_Amenable_2017_2019, by=c("code"="Opstina")) %>% pull(YPLLi)
+
+Serbia@data$YPLLi20172019stroke <- left_join(Serbia@data %>% mutate(code=as.character(code)), standardized_YPLL_Stroke, by=c("code"="Opstina")) %>% pull(YPLLi)
 
 Serbia@data$YPLLi20172019respiratory <- left_join(Serbia@data %>% mutate(code=as.character(code)), standardized_YPLL_respiratory_2017_2019, by=c("code"="Opstina")) %>% pull(YPLLi)
 
 
-left_join(Serbia@data , opstine, by=c("code"="Code")) %>% group_by(Oblast) %>% summarize(YPLLi20172019avoidable=min(YPLLi20172019avoidable) )%>% left_join(Serbia@data) %>% View
+left_join(Serbia@data , opstine, by=c("code"="Code")) %>% group_by(Oblast) %>% summarize(YPLLi20172019avoidable=min(YPLLi20172019avoidable) )%>% left_join(Serbia@data)
 
 
 
@@ -1075,9 +1104,13 @@ lm(data=cortestdata, formula = log(density)~log(YPLLi)) %>% summary
 
 
 
-getscatterplot <- function(mortalitydataframe=NULL,map=NULL, x=NULL, y=NULL, cor=T) {
-  cortestdata<- left_join(mortalitydataframe, Serbia@data %>% mutate(Opstina=as.character(code))) 
-cortestdata$density <- cortestdata$Pop/cortestdata$area
+getscatterplot <- function(mortalitydataframe=NULL,map=NULL, x=NULL, y=NULL) {
+  if(is.null(mortalitydataframe)){
+    cortestdata <- map@data
+  } else{
+  cortestdata<- left_join(mortalitydataframe, map@data %>% mutate(Opstina=as.character(code))) 
+  }
+
 scatterplottosave<-  cortestdata %>% ggplot(aes(x=eval(parse(text=x)),y=eval(parse(text=y)))) + geom_point() + theme_tufte() +stat_cor(p.digits = 2, aes(label =  paste(..rr.label.., ..p.label.., sep = "~`,`~")))+xlab(x)+ylab(y)
   
   ggsave(scatterplottosave,
@@ -1088,9 +1121,6 @@ scatterplottosave<-  cortestdata %>% ggplot(aes(x=eval(parse(text=x)),y=eval(par
         height = 80,
         dpi = 600
       )
-  if(cor){
-  print(cor.test(cortestdata$density, cortestdata$YPLLi, method ="spearman"))
-  }
 
 }
   
@@ -1113,7 +1143,7 @@ getscatterplot(mortalitydataframe = standardized_YPLL_TOTAL, map = Serbia,x= "lo
 
 
 ```
-
+## Kreiranje grafikona trendova 
 ```{r avoidable_trend, message=FALSE, warning=FALSE, fig.show='hide'}
 #Gender
 popsr2020m <-
@@ -1239,6 +1269,8 @@ levels(sex_avoidable_years$Cause) <- c("SARS-CoV-2", "Ostali", "Moguće izbeći"
   
 
 ```
+## Kreiranje treemap vizualizacija uzroka smrti
+
 ```{r causes_and_treemaps, message=FALSE, warning=FALSE, fig.show='hide'}
 
 #Učitavanje podataka o dijagnozama 
@@ -1459,11 +1491,21 @@ umrli_YPLL_2020$Cause <- factor(umrli_YPLL_2020$Cause)
 create_treemap(mortalitydataframe = umrli_YPLL_2020,diagnosisdataframe = d, sr=T, size_col ="YPLL",category_col = "Chapter", title_col = "TilteSR")
 
 
+#Uzroci smrti za pet opština severnobanatskog okruga
+
+umrli_YPLL_Severnibanat_2017_2019<- umrli %>% filter(
+  Godina.materijala %in% c(2017:2019),Opstina %in% c(80012,80195,80276, 80365,80489 ), Avoidable==1,
+  Starost < YPLL_Age
+) %>%
+  mutate(YPLL = (YPLL_Age - Starost) * Broj.pojava, Cause=substring(Uzrok.smrti,1,3)) %>% group_by(Cause) %>% summarise(YPLL = round(sum(YPLL)/3,1))
+umrli_YPLL_Severnibanat_2017_2019$Cause <- factor(umrli_YPLL_Severnibanat_2017_2019$Cause)
+create_treemap(mortalitydataframe = umrli_YPLL_Severnibanat_2017_2019,diagnosisdataframe = d, sr=T, size_col ="YPLL",category_col = "Chapter", title_col = "TilteSR")
 
 
 
 
 ```
+## Dodavanje podataka o aerozagađenju
 ```{r airpolution, message=FALSE, warning=FALSE, fig.show='hide'}
 
 require(sp)
@@ -1473,9 +1515,9 @@ require(sp)
 world_pm25_postoje <- file.exists("SerbiaPolution")
 if(!world_pm25_postoje){
 world <- raster::stack("AeroZag/pm25 geotiff global 2016/gwr_pm25_2016.tif")
-cr<-crop(world, Serbia)
-fr<-rasterize(Serbia, cr)
-SerbiaPolution<-mask(x=cr, mask=fr)
+cr<- raster::crop(world, Serbia)
+fr<- raster::rasterize(Serbia, cr)
+SerbiaPolution<- raster::mask(x=cr, mask=fr)
 }else{
 SerbiaPolution<- readRDS(file = "SerbiaPolution")
 }
@@ -1498,10 +1540,17 @@ WeigthedPolution_stats<- raster::extract(WeigthedPolution, Serbia)
 WeigthedPolution_stats<- lapply(WeigthedPolution_stats, FUN=sum,na.rm=TRUE)
 urban_stats<- raster::extract(urban, Serbia)
 urban_stats<- lapply(urban_stats, FUN=sum,na.rm=TRUE)
+a <- raster::extract(urban, Serbia)
+#Serbia@data$PopGini<- lapply(a, FUN=function(x){ unlist(x)}) %>% unlist
+
 
 Serbia@data$pm25 <- WeigthedPolution_stats %>% unlist / urban_stats %>% unlist
 
+
+
 m_d_f_p<- Serbia@data %>% mutate(Opstina=as.character(code)) %>% dplyr::select(Opstina, pm25)
+#m_d_f_popgini<- Serbia@data %>% mutate(Opstina=as.character(code)) %>% dplyr::select(Opstina, PopGini)
+
                                  
   buildMap(
     map = Serbia,
@@ -1511,6 +1560,8 @@ m_d_f_p<- Serbia@data %>% mutate(Opstina=as.character(code)) %>% dplyr::select(O
     paleta = "Greys",
     legend_title = "PM2.5 na mg/m3"
   )
+  
+
   
 Serbia@data<- cbind(Serbia@data , left_join(m_d_f_p,
  umrli %>% filter(Godina.materijala %in% c(2017:2019),
@@ -1545,12 +1596,19 @@ standardized_mortality_pm25 <-
     motality_dataframe =standardized_mortality_pm25,
     variable = "YPLLi",
     paleta = "Greens",
-    legend_title = "Godina na\n100.000 30-75"
+    legend_title = "Broj godina na\n100.000 30-75"
   )
  
   Serbia@data$YPLLi17_19_PM25 <- left_join(Serbia@data %>% mutate(Opstina=as.character(code)), standardized_mortality_pm25)$YPLLi
 
-
+  Serbia@data$Broj17_19_PM25 <-  left_join(Serbia@data %>% mutate(Opstina=as.character(code)), standardized_mortality_pm25)$Broj.pojava
+  
+  cor.test(Serbia@data$pm25,Serbia@data$YPLLi17_19, method = "spearman")
+  cor.test(Serbia@data$pm25,Serbia@data$YPLLi20172019avoidable, method = "spearman")
+  cor.test(Serbia@data$pm25,Serbia@data$YPLLi20172019amenable, method = "spearman")
+  cor.test(Serbia@data$pm25,Serbia@data$YPLLi20172019preventable, method = "spearman")
+  cor.test(Serbia@data$pm25,Serbia@data$YPLLiSARS, method = "spearman")
+  
 # Serbia@data$pm25 <- WeigthedPolution_stats %>% unlist / urban_stats %>% unlist
 # 
 # 
@@ -1580,101 +1638,104 @@ standardized_mortality_pm25 <-
 
 standardized_YPLL_aeropolution<- stadnardize_ypll(umrli, pop, standardpop75, c(2017:2019),YPLL_Age,causes='substring(Uzrok.smrti,1,3) %in% c("J40", "J41", "J42", "J43", "J44")') 
 
-  Serbia@data$YPLLi17_19_aero <-   left_join(Serbia@data %>% mutate(Opstina=as.character(code)), standardized_YPLL_aeropolution)$YPLLi
- 
-
-
-
+Serbia@data$YPLLi17_19_aero <-   left_join(Serbia@data %>% mutate(Opstina=as.character(code)), standardized_YPLL_aeropolution)$YPLLi
 
 
 ```
+## Korelacija pokazatelje društvenog razvoja sa pokazateljemi prevremenog mortaliteta
 ```{r correlation, message=FALSE, warning=FALSE, fig.show='hide'}
+socioecon<- read.xlsx("SRdrMap/SociEconomicIndicators.xlsx")
 
-# cordata<- Serbia@data %>% select('YPLLi 2017-2019'= YPLLi17_19,'Me Starost YPLL 2017-2019'= MedianAgeYPLL17_19, 'Izbežni YPLLi 2017-2019'=YPLLi20172019avoidable,'Preventabilni YPLLi 2017-2019'= YPLLi20172019preventable, 'Predupredivi YPLLi 2017-2019'=YPLLi20172019amenable, 'SARS-CoV-2 YPLLi 2020'=YPLLiSARS, 'PM25 YPLLi 2017-2019'= YPLLi17_19_PM25, 'Neto plata'= wageNet ,'Gustina naseljenosti'=density, 'PM2.5'= pm25 ) 
-# 
-# cormat<-cordata %>% cor(method = "spearman")
-# pmat<- cordata %>% rstatix::cor_pmat(,
-#                                      method = "spearman")
-# pmat$rowname <- NULL
-# rownames(pmat) <- pmat %>% colnames()
-# 
-# 
-#   get_lower_tri<-function(cormat){
-#     cormat[upper.tri(cormat)] <- NA
-#     return(cormat)
-#   }
-#   # Get upper triangle of the correlation matrix
-#   get_upper_tri <- function(cormat){
-#     cormat[lower.tri(cormat)]<- NA
-#     return(cormat)
-#   }
-# 
-# #cormat <- reorder_cormat(cormat)
-# upper_tri <- get_upper_tri(cormat)
-# upper_tri_pmat <- get_upper_tri(pmat)
-# # Melt the correlation matrix
-# melted_cormat <- reshape2::melt(upper_tri, na.rm = TRUE)
-# melted_pmat <- reshape2::melt(upper_tri_pmat, na.rm = TRUE)
-# 
-# melted_cormat$pvalue <- melted_pmat$value
-# # Create a ggheatmap
-# ggheatmap <- ggplot(melted_cormat, aes(Var2, Var1, fill = value))+
-#  geom_tile(color = "white")+
-#  scale_fill_gradient2(low = "#1f78b4", high = "#e31a1c", mid = "white", 
-#    midpoint = 0, limit = c(-1,1), space = "Lab", 
-#     name="Spirmanov koeficijent\nkorelacije") +
-#   theme_tufte()+ # minimal theme
-#  theme(axis.text.x = element_text(angle = 45, vjust = 1, 
-#     size = 12, hjust = 1))+
-#  coord_fixed()
-# # Print the heatmap
-# 
-# final_cormat_heatmap<- ggheatmap + 
-# geom_text(aes(Var2, Var1, label = gsub(pattern = '[.]', replacement = ',',x = round(value,2)),alpha=ifelse(pvalue<0.05, 1,0)), color = "#000000",guide="none", size = 4) +
-# theme(
-#   axis.title.x = element_blank(),
-#   axis.title.y = element_blank(),
-#   panel.grid.major = element_blank(),
-#   panel.border = element_blank(),
-#   panel.background = element_blank(),
-#   axis.ticks = element_blank(),
-#   legend.justification = c(1, 0),
-#   legend.position = c(0.6, 0.7),
-#   legend.direction = "horizontal")+
-#   guides(fill = guide_colorbar(barwidth = 7, barheight = 1,
-#                 title.position = "top", title.hjust = 0.5))+ scale_alpha(guide = 'none')
-# 
-# ggsave(final_cormat_heatmap,
-#         filename =  paste0(deparse(substitute(
-#           final_cormat_heatmap
-#         )), ".png"),
-#         units = "mm",
-#         width = 160,
-#         height = 160,
-#         dpi = 600
-#       )
+Serbia@data <- left_join(Serbia@data, socioecon, by=c("code"="Code" ))
+
+cordata<- Serbia@data %>% select('YPLLi 2017-2019'= YPLLi17_19,'Me Starost YPLL 2017-2019'= MedianAgeYPLL17_19, 'Izbežni YPLLi 2017-2019'=YPLLi20172019avoidable,'Preventabilni YPLLi 2017-2019'= YPLLi20172019preventable, 'Predupredivi YPLLi 2017-2019'=YPLLi20172019amenable, 'SARS-CoV-2 YPLLi 2020'=YPLLiSARS, 'PM25 YPLLi 2017-2019'= YPLLi17_19_PM25, 'HDI 2018'="Indeks.društvenog.razvoja", 'Neto plata 2018'= Prosečna.neto.zarada,'Ekonomska aktivnost 2018'="Ekonomska.aktivnost", "Stopa nezaposlenosti 2018"="Stopa.nezaposlenosti", "Br. lekara na 1000 st. 2018"="Broj.lekara.na.1000.stanovnika","Udeo korisnika NSP 2018" ="Udeo.korisnika.NSP" )
 
 
+
+cormat<-cordata %>% cor(method = "spearman")
+pmat<- cordata %>% rstatix::cor_pmat(,
+                                     method = "spearman")
+pmat$rowname <- NULL
+rownames(pmat) <- pmat %>% colnames()
+
+
+  get_lower_tri<-function(cormat){
+    cormat[upper.tri(cormat)] <- NA
+    return(cormat)
+  }
+  
+  # Get upper triangle of the correlation matrix
+  get_upper_tri <- function(cormat){
+    cormat[lower.tri(cormat)]<- NA
+    return(cormat)
+  }
+
+#cormat <- reorder_cormat(cormat)
+upper_tri <- get_upper_tri(cormat)
+upper_tri_pmat <- get_upper_tri(pmat)
+# Melt the correlation matrix
+melted_cormat <- reshape2::melt(upper_tri, na.rm = TRUE)
+melted_pmat <- reshape2::melt(upper_tri_pmat, na.rm = TRUE)
+
+melted_cormat$pvalue <- melted_pmat$value
+# Create a ggheatmap
+ggheatmap <- ggplot(melted_cormat, aes(Var2, Var1, fill = value))+
+ geom_tile(color = "white")+
+ scale_fill_gradient2(low = "#1f78b4", high = "#e31a1c", mid = "white",
+   midpoint = 0, limit = c(-1,1), space = "Lab",
+    name="Spirmanov koeficijent\nkorelacije") +
+  theme_tufte()+ # minimal theme
+ theme(axis.text.x = element_text(angle = 45, vjust = 1,
+    size = 12, hjust = 1))+
+ coord_fixed()
+# Print the heatmap
+
+final_cormat_heatmap<- ggheatmap +
+geom_text(aes(Var2, Var1, label = gsub(pattern = '[.]', replacement = ',',x = round(value,2)),alpha=ifelse(pvalue<0.05, 1,0)), color = "#000000",guide="none", size = 4) +
+theme(
+  axis.title.x = element_blank(),
+  axis.title.y = element_blank(),
+  panel.grid.major = element_blank(),
+  panel.border = element_blank(),
+  panel.background = element_blank(),
+  axis.ticks = element_blank(),
+  legend.justification = c(1, 0),
+  legend.position = c(0.6, 0.7),
+  legend.direction = "horizontal")+
+  guides(fill = guide_colorbar(barwidth = 7, barheight = 1,
+                title.position = "top", title.hjust = 0.5))+ scale_alpha(guide = 'none')
+
+ggsave(final_cormat_heatmap,
+        filename =  paste0(deparse(substitute(
+          final_cormat_heatmap
+        )), ".png"),
+        units = "mm",
+        width = 200,
+        height = 200,
+        dpi = 600
+      )
+
+
+getscatterplot( map = Serbia,x= "log(YPLLi17_19)",y= "log(Indeks.društvenog.razvoja)")
 #lm(data=Serbia@data, formula = YPLLi17_19~log(density)+pm25:log(density)) %>% summary
 
 #lm(data=Serbia@data, formula = YPLLiSARS~YPLLi17_19+pm25+log(density)+pm25:YPLLi17_19+log(density):YPLLi17_19) %>% plot
 
 # partykit::lmtree(data=Serbia@data, formula = YPLLi17_19~ pm25|wageNet|density) %>% summary
-# 
+#
 # a <- glm(YPLLi17_19~pm25, data = Serbia@data)
 # b<- glmulti::glmulti(a)
 # glmulti::glmulti(y="YPLLiSARS",xr=c("YPLLi17_19", "pm25", "log(wageNet)", "log(density)"),data=Serbia@data)
-# 
+#
 # require(mgcv)
 # gam(data=Serbia@data, formula = YPLLi17_19~pm25+s(wageNet)) %>% plot
-# 
+#
 #        lm(data=Serbia@data, formula = YPLLi17_19~pm25) %>% summary
 
 ```
 
+## Ekonomski trošak prevremenog mortaliteta
 ```{r ekonomska_cena, message=FALSE, warning=FALSE}
-
-
 
 ypll_prod <- function(mdf, years, causes) {
   
@@ -1718,5 +1779,472 @@ ypll_prod( umrli, c(2019), "Starost>30")
 ypll_prod( umrli, c(2020), "Starost>30")
 
 ```
+## Prevremeni mortalitet u Srbiji i Evropskoj uniji
+```{r Prevremeni_Mortalitet_Eu, message=FALSE, warning=FALSE}
+# 
+# countries <- read.csv(file = "country_codes.csv", stringsAsFactors = F)
+# colnames(countries)[1] <- "Country"
+# 
+# 
+# 
+# 
+# amenmort<- read.csv(file ="amort.csv")
+# amenmort$Cause <- gsub(pattern = "[.]", replacement = "", x = amenmort$Cause)
+# detailedICD10<- read.csv(file = "Detailed ICD10.csv")
+# 
+# 
+# 
+# p <- read.csv(file = "WHOmart2021/pop")
+# p <- p[p$Frmat %in% c(0,1,2),]
+# p[is.na(p)] <- 0
+# p<- p %>% mutate(Pop3=Pop3+Pop4+Pop5+Pop6) #transmute(p, Pop3=Pop3+Pop4+Pop5+Pop6)
+# p <- p %>% mutate(Pop23=Pop23 + Pop24 + Pop25) #transmute(p, Pop23=Pop23 + Pop24 + Pop25)
+# #p <- p[, -c("Pop4","Pop5","Pop6", "Pop24","Pop25" , "Pop26","Lb" )]
+# p <- p %>% select(colnames(.)[!colnames(.) %in% c("Pop4","Pop5","Pop6", "Pop24","Pop25" , "Pop26","Lb" )])
+# 
+# colnames(p[,8:26]) <- c("0","1-4",  "5-9", "10-14", "15-19", "20-24", "25-29", "30-34", 
+#                            "35-39", "40-44", "45-49", "50-54", "55-59", "60-64", 
+#                            "65-69", "70-74", "75-79", "80-84", "85+")
+# 
+# umrliEU<- rbind(
+#   data.table::fread(file = "WHOmart2021/Morticd10_part1", sep = ",", header = T, stringsAsFactors = F),
+#   data.table::fread(file = "WHOmart2021/Morticd10_part2", sep = ",", header = T, stringsAsFactors = F),
+#   data.table::fread(file = "WHOmart2021/Morticd10_part3", sep = ",", header = T, stringsAsFactors = F),
+#   data.table::fread(file = "WHOmart2021/Morticd10_part4", sep = ",", header = T, stringsAsFactors = F),
+#   data.table::fread(file = "WHOmart2021/Morticd10_part5", sep = ",", header = T, stringsAsFactors = F)
+# )
+# 
+# umrliEU <- umrliEU[!umrliEU$List %in% c("101","UE10","10M","UE1"),]
+# 
+# #exclusion of countries with age format that doesn't go up to 85+
+# umrliEU <- umrliEU[umrliEU$Frmat %in% c(0,1,2),]
+# umrliEU <- umrliEU[umrliEU$Sex!=9,]
+# umrliEU <- umrliEU[umrliEU$SubDiv!="A30",]
+# umrliEU[is.na(umrliEU)] <- 0
+# umrliEU <- umrliEU[umrliEU$Admin1==0,]
+# 
+# umrliEU <- umrliEU %>% mutate( Deaths3= Deaths3+Deaths4+Deaths5+Deaths6)
+# umrliEU <- umrliEU %>% mutate(Deaths23=Deaths23 + Deaths24 + Deaths25)
+# umrliEU <- umrliEU %>% select(colnames(.)[!colnames(.) %in% c("Deaths1","Deaths4","Deaths5","Deaths6","Deaths24"
+#                                                   ,"Deaths25" , "Deaths26", "IM_Deaths1", "IM_Deaths2", "IM_Deaths3", "IM_Deaths4" )])
+# 
+# umrliEU$Cause <- as.character(umrliEU$Cause)
+# umrliEU$Cause[umrliEU$List==104 & nchar(umrliEU$Cause)==4] <- substring(umrliEU$Cause[umrliEU$List==104 & nchar(umrliEU$Cause)==4],1,3)
+# umrliEU$Cause <- factor(umrliEU$Cause)
+# 
+# umrliEU <- umrliEU[, -c(2,3,5,8,9)]
+# 
+# temp<- left_join(umrliEU[umrliEU$Sex==1, ],umrliEU[umrliEU$Sex==2, ],by= c( "Country","Year", "Cause"))
+# st <- is.na(temp[, c(5:23, 25:43)])
+# temp[,c(5:23, 25:43)][st] <- 0
+# rm(st)
+# temp2 <- temp[,1:23]
+# temp2$Sex.x <- 3
+# temp2[,5:23] <- temp[,5:23]+temp[,25:43]
+# colnames(temp2)[3:23] <- colnames(umrliEU)[3:23] 
+# umrliEU<- rbind(umrliEU[,1:23],temp2[,1:23])
+# rm(temp, temp2)
+# 
+# umrliEU <- left_join(umrliEU, d, by=c("Cause"="Cause"))
+# umrliEU <- left_join(umrliEU,amenmort)
+# 
+# colnames(umrliEU)[5:23] <- c("0","1-4",  "5-9", "10-14", "15-19", "20-24", "25-29", "30-34", 
+#                        "35-39", "40-44", "45-49", "50-54", "55-59", "60-64", 
+#                        "65-69", "70-74", "75-79", "80-84", "85+")
 
+#m$Chapter <- unlist(lapply(m$Cause, FUN=function(x){return(d$Chapeter[as.character(d$Cause)==as.character(x)])}))
+
+#m <- left_join(m, d[,c("Cause", "Chapter")],"Cause")
+
+#umrliEU <- left_join(umrliEU, ch %>% mutate(Chapter_name=Title, Chapter=as.character(Chapter)) %>%  select(Chapter, Chapter_name))
+#umrliEU$Chapter_name <- as.factor(umrliEU$Chapter_name)
+
+
+require(eurostat)
+
+  euroDeaths<- eurostat::get_eurostat("demo_magec")
+  euroPop<- eurostat::get_eurostat("demo_r_d2jan")
+
+euroDeaths <- euroDeaths %>% filter(nchar(geo)==2,age %in% c("Y_LT1",paste0("Y",1:74)), sex %in% c("F", "M") ) %>% mutate(Godina.materijala= substring(time, 1,4), Pol=ifelse(sex=="M","1","2"), Opstina=geo, age=ifelse(age=="Y_LT1","Y0", age)) %>% mutate(age=as.integer(substring(age,2, nchar(age)))) %>% select(Godina.materijala, Pol, Opstina, Broj.pojava=values, Starost=age)
+
+euroPop <- 
+  euroPop %>%  filter(nchar(geo)==2,age %in% c("Y_LT1",paste0("Y",1:74)), sex %in% c("F", "M") ) %>% mutate(Godina.materijala= substring(time, 1,4), Pol=ifelse(sex=="M","1","2"), Opstina=geo, age=ifelse(age=="Y_LT1","Y0", age)) %>% mutate(age=substring(age,2, nchar(age))) %>% select(god=Godina.materijala, nPol=Pol, IDTer=Opstina, vrednost=values, IDStarost=age )
+
+stadnardize_ypll_EU <- function(umrli=NULL, pop=NULL,standardpopulation=NULL,years=NULL, standard_age=NULL, causes=NULL ) {
+standardized_mortality <- left_join(
+    left_join(
+        pop %>% filter(god %in% years ,!IDStarost %in% c("0", "V85")) %>% mutate(Starost = as.integer(IDStarost)) %>% filter(Starost < YPLL_Age) %>% group_by(Opstina = IDTer, Starost) %>% summarise(Pop = sum(vrednost)), umrli %>% filter(Godina.materijala %in% years, Starost < YPLL_Age) %>% mutate(Broj.pojava = ifelse(is.na(Broj.pojava), 0, Broj.pojava)) %>%  mutate(YPLL = (YPLL_Age - Starost) * Broj.pojava) %>% group_by(Opstina, Starost) %>% summarise(YPLL = sum(YPLL))) %>% mutate(YPLL = ifelse(is.na(YPLL), 0, YPLL)) %>% mutate(YPLLR = YPLL /Pop * 100000), standardpopulation) %>% group_by(Opstina) %>% summarise( 
+                                       Median_AGE_YPLL=FindMedian(YPLL),
+                                       YPLLi = sum(YPLLR * stpop, na.rm = T),
+                                       YPLLR = sum(YPLL) / sum(Pop) * 100000,
+                                       YPLL = sum(YPLL),
+                                       Pop = sum(Pop)
+)
+return(standardized_mortality)
+}
+
+stadnardize_ypll_EU(umrli = euroDeaths, pop =euroPop, standardpopulation = standardpop75, standard_age = 75, years = 2017:2019 )
+
+#EU Muškarci
+for(i in 2000:2019){
+if(i==2000){
+  standardizedEUrates21stCm <- cbind(Godina=i,stadnardize_ypll_EU(umrli = euroDeaths %>% filter(Pol==1), pop =euroPop%>% filter(nPol==1), standardpopulation = standardpop75, standard_age = 75, years = i ))
+}else{
+standardizedEUrates21stCm  <- rbind(standardizedEUrates21stCm,cbind(Godina=i, stadnardize_ypll_EU(umrli = euroDeaths%>% filter(Pol==1), pop =euroPop%>% filter(nPol==1), standardpopulation = standardpop75, standard_age = 75, years = i )))
+}
+}
+#EU Žene
+for(i in 2000:2019){
+if(i==2000){
+  standardizedEUrates21stCz <- cbind(Godina=i,stadnardize_ypll_EU(umrli = euroDeaths %>% filter(Pol==2), pop =euroPop%>% filter(nPol==2), standardpopulation = standardpop75, standard_age = 75, years = i ))
+}else{
+standardizedEUrates21stCz  <- rbind(standardizedEUrates21stCz,cbind(Godina=i, stadnardize_ypll_EU(umrli = euroDeaths %>% filter(Pol==2), pop =euroPop%>% filter(nPol==2), standardpopulation = standardpop75, standard_age = 75, years = i )))
+}
+}
+
+#EU svi
+for(i in 2000:2019){
+if(i==2000){
+  standardizedEUrates21stAll<- cbind(Godina=i,stadnardize_ypll_EU(
+    umrli = euroDeaths %>% group_by(Godina.materijala,Opstina, Starost) %>% summarise(Broj.pojava=sum(Broj.pojava,na.rm = T)),
+    pop =euroPop %>% group_by(god, IDTer, IDStarost) %>% summarise(vrednost=sum(vrednost,na.rm = T)),
+    standardpopulation = standardpop75, standard_age = 75, years = i ))
+}else{
+standardizedEUrates21stAll  <- rbind(standardizedEUrates21stAll,cbind(Godina=i, stadnardize_ypll_EU(
+  umrli = euroDeaths %>% group_by(Godina.materijala,Opstina, Starost) %>% summarise(Broj.pojava=sum(Broj.pojava,na.rm = T)),
+  pop = euroPop %>% group_by(god, IDTer, IDStarost) %>% summarise(vrednost=sum(vrednost,na.rm = T)),
+  standardpopulation = standardpop75, standard_age = 75, years = i )))
+}
+}
+
+standardizedEUrates21stC <- rbind(cbind(Pol="Muškarci",standardizedEUrates21stCm ),
+                                  cbind(Pol="Žene",standardizedEUrates21stCz ))
+
+
+
+  EU_scatter<- standardizedEUrates21stAll %>%filter(Godina==2019, Opstina!="UK") %>% ggplot()+
+    ggrepel::geom_text_repel(aes(x=Median_AGE_YPLL ,y=YPLLi,label=Opstina))+
+    theme_tufte()+
+    geom_vline(xintercept = standardizedEUrates21stAll %>%filter(Godina==2019) %>% pull(Median_AGE_YPLL) %>% median(na.rm = T))+
+    geom_hline(yintercept = standardizedEUrates21stAll %>%filter(Godina==2019) %>% pull(YPLLi) %>% median(na.rm = T))+
+    xlab("Medijalna starost izgubljenih godina života")+
+    ylab("St. stopa izgubljenih godina života")
+  
+
+ggsave(EU_scatter,
+        filename =  paste0(deparse(substitute(
+          EU_scatter
+        )), ".png"),
+        units = "mm",
+        width = 160,
+        height = 160,
+        dpi = 600
+      )
+
+
+standardizedEUplot<- standardizedEUrates21stC %>%mutate(YPLLi=ifelse(YPLLi==0,NA,YPLLi)) %>%  mutate(Opstina=factor(Opstina, levels=standardizedEUrates21stAll %>%filter(Godina==2018) %>% arrange(-YPLLi) %>% pull(Opstina) )) %>%  filter(!Opstina %in% c("LI"))%>%  ggplot()+
+  geom_line(aes(x=Godina, y=YPLLi, col=Pol))+
+  facet_wrap(~Opstina)+ 
+  theme_tufte()+
+  scale_color_manual(values = c("#377eb8", "#e41a1c"))+
+  scale_x_continuous(breaks = c(2000,2005, 2010,2015, 2019))+
+   theme( legend.justification = c(1, 0),
+  legend.position = c(0.6, -0.075),
+  legend.direction = "horizontal",
+  axis.text.x = element_text(angle = 90,size = 8),
+  axis.text.y = element_text(size = 8))+
+  xlab(" ")+
+  ylab("St. stopa izgubljenih godina života")
+  
+
+
+
+ggsave(standardizedEUplot,
+        filename =  paste0(deparse(substitute(
+          standardizedEUplot
+        )), ".png"),
+        units = "mm",
+        width = 160,
+        height = 220,
+        dpi = 600
+      )
+                                  
+```
+## Udaljena zdravstvena infrastruktura
+```{r zdravstvena_infrastruktura, message=FALSE, warning=FALSE}
+serb_proj <- "+proj=tmerc +lat_0=0 +lon_0=21 +k=0.9999 +x_0=7500000 +y_0=0 +ellps=bessel +towgs84=574.027,170.175,401.545,4.88786,-0.66524,-13.24673,6.89 +units=m"
+#serb_proj <- "+proj=aea +zone=34T +ellps=WGS84"
+
+zdrv_infra <-  read.xlsx("HealthInfrastructure - Final.xlsx")
+zdrv_infra1 <-  read.xlsx("HealthInfrastructure - Final.xlsx")
+
+zdrv_infra<- SpatialPointsDataFrame(coords = zdrv_infra[,c("long","lat")], data = zdrv_infra,
+                               proj4string = CRS("+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0"))
+zdrv_infra<- spTransform( zdrv_infra, CRS("+proj=tmerc +lat_0=0 +lon_0=21 +k=0.9999 +x_0=7500000 +y_0=0 +ellps=bessel +units=m +no_defs")) 
+
+SerbiaGIS <- Serbia
+proj4string(SerbiaGIS) <- CRS("+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")
+SerbiaGIS <- spTransform(SerbiaGIS,CRS(serb_proj))
+
+require(rgeos)
+
+a<- over(zdrv_infra,SerbiaGIS)
+
+rgeos::gDistance(spgeom1 = zdrv_infra[1,],spgeom2 = zdrv_infra[129,],byid = T)
+apply(gDistance(SerbiaGIS,zdrv_infra, byid = T),2,min)
+
+gDistance(spgeom1 = SerbiaGIS[1,],spgeom2 = zdrv_infra[129,],byid = T,hausdorff = T) 
+
+Serbia$distance_from_primary<- unname(apply(gDistance(SerbiaGIS,zdrv_infra[zdrv_infra$Level=="Primary",], byid = T),2,min)/1000)
+Serbia$distance_from_secondary<- unname(apply(gDistance(SerbiaGIS,zdrv_infra[zdrv_infra$Level=="Secondary",], byid = T),2,min)/1000)
+Serbia$distance_from_tertiary<- unname(apply(gDistance(SerbiaGIS,zdrv_infra[zdrv_infra$Level=="Tertiary",], byid = T),2,min)/1000)
+Serbia$distance_from_special<- unname(apply(gDistance(SerbiaGIS,zdrv_infra[zdrv_infra$Level=="Special",], byid = T),2,min)/1000)
+Serbia$distance_from_specialized<- unname(apply(gDistance(SerbiaGIS,zdrv_infra[zdrv_infra$Level=="Specialised",], byid = T),2,min)/1000)
+Serbia$distance_from_public_health<- unname(apply(gDistance(SerbiaGIS,zdrv_infra[zdrv_infra$Level=="Public Health",], byid = T),2,min)/1000)
+Serbia$distance_from_military<- unname(apply(gDistance(SerbiaGIS,zdrv_infra[zdrv_infra$Level=="Military",], byid = T),2,min)/1000)
+Serbia$distance_from_non_primary<- unname(apply(gDistance(SerbiaGIS,zdrv_infra[zdrv_infra$Level!="Primary",], byid = T),2,min)/1000)
+
+
+
+
+
+SerbiaGIS_sf<- st_as_sf(SerbiaGIS)
+zdrv_infra_sf<- st_as_sf(zdrv_infra)
+a<-  st_intersection(x = SerbiaGIS_sf, y = zdrv_infra_sf)
+
+plot(SerbiaGIS_sf, graticule = st_crs(4326))
+plot(a[1], col = "black", pch = 19, add = TRUE)
+
+
+serb_proj    <- #"+proj=tmerc +lat_0=0 +lon_0=21 +k=0.9999 +x_0=7500000 +y_0=0 +ellps=bessel +towgs84=534.8017"
+rgeos::gDistance(SerbiaGIS[111,],SerbiaGIS[12,],hausdorff = T,densifyFrac = 0.1)
+
+
+
+
+library(ggvoronoi)
+
+
+
+distance_vornoi<- apply(gDistance(zdrv_infra,zdrv_infra[zdrv_infra$Level=="Tertiary",], byid = T),2, min)/1000 %>% unname
+
+vornoi_map <- ggplot(SRMAP) +
+      guides(
+        fill = guide_colorsteps(
+          show.limits = T,
+          frame.linewidth = 2,
+          ticks.colour = "#808080",
+          frame.linetype = 1,
+          frame.colour = "#808080",
+          ticks = T,
+          even.steps = T,
+          title = "Udaljenost od tercijarne\ninfrastrukture u km"
+        )
+      ) +
+      theme_tufte() + theme(
+        legend.position = c(.80, .85),
+        text = element_text(size = 10,  family = "TT Arial"),
+        legend.title = element_text(size = 8, margin = margin(b = 10, unit = "pt"))
+      ) +
+      xlab(NULL) + ylab(NULL) + theme(
+        axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank()
+      ) +    geom_voronoi(data =zdrv_infra1, aes(,x=long, y=lat,fill=round(distance_vornoi,0)),outline = SRMAP)+
+# geom_path(stat = "voronoi",data =zdrv_infra1[zdrv_infra1$Level=="Primary",], aes(x=long, y=lat),color="red",alpha=1,size=0.25 )+
+#geom_path(stat = "voronoi",data =zdrv_infra1[zdrv_infra1$Level=="Tertiary",], aes(x=long, y=lat),color="red",alpha=1,size=0.25 )+
+geom_point(data=zdrv_infra1[zdrv_infra1$Level=="Primary",],aes(x=long,y=lat),shape=19,alpha=0.3,show.legend = T)+
+  geom_point(data=zdrv_infra1[zdrv_infra1$Level=="Tertiary",],aes(x=long,y=lat),shape=17, size=3)+
+        geom_map(
+        map = SRMAP,
+        aes(
+          map_id = id,
+          x = long,
+          y = lat
+         # group = group,
+        ),
+        color = "#808080",fill="NA",
+        na.rm = F
+      ) +
+          geom_polygon(
+        data = Kosovo,
+        aes(x = long, y =  lat, group = group),
+        color = "#808080",
+        alpha = 0,
+        linetype = 1
+      ) +
+      coord_map("mercator")+
+  scale_fill_distiller(palette = "RdYlGn")
+
+      ggsave(
+        vornoi_map,
+        filename =  paste0(deparse(substitute(
+          vornoi_map
+        )), ".png"),
+        units = "mm",
+        width = 210,
+        height = 210,
+        dpi = 600
+      )
+      
+            knitr::plot_crop(x = paste0(deparse(substitute(
+          vornoi_map
+        )), ".png"))
+
+  #geom_voronoi(data =zdrv_infra1, aes(,x=long, y=lat,fill=Serbia@data$YPLLi17_19))
+#Dodati po opštini vrednosti, ako pada na opštinu koordinata
+ voronoi_polygon(data=zdrv_infra1[zdrv_infra1$Level=="Tertiary",],
+                                x="long",y="lat",
+                                outline=SRMAP)
+ 
+ 
+
+
+lm(YPLLi20172019avoidable~1+distance_from_secondary+distance_from_secondary:Indeks.društvenog.razvoja, Serbia@data) %>% summary
+
+lm(YPLLi17_19~1 + distance_from_primary+distance_from_secondary+distance_from_tertiary+ distance_from_military+ distance_from_specialized+distance_from_special+distance_from_public_health, Serbia@data) %>% summary
+
+require(psych)
+distance_vars<- c("distance_from_primary", "distance_from_secondary", "distance_from_tertiary", "distance_from_military", "distance_from_specialized", "distance_from_special", "distance_from_public_health")
+
+psych::alpha(Serbia@data %>% select(all_of(distance_vars)))
+psych::KMO(Serbia@data %>% select(all_of(distance_vars)))
+psych::scree(Serbia@data %>% select(all_of(distance_vars)))
+psych::fa.parallel(Serbia@data %>% select(all_of(distance_vars)))
+fa(
+Serbia@data %>% select(all_of(distance_vars)),
+nfactors = 2,
+rotate = "oblimin",
+covar = F
+)
+
+principal(
+Serbia@data %>% select(all_of(distance_vars)),
+nfactors = 3,
+)
+require("FactoMineR")
+
+pca_solution<- FactoMineR::PCA(Serbia@data[,distance_vars])
+
+
+Serbia@data$distance_PC<- pca_solution$ind$coord[,1] %>% unname
+Serbia@data$distance_PC2<- pca_solution$ind$coord[,2] %>% unname
+
+pca_solution<- psych::principal(Serbia@data %>% select(all_of(distance_vars)),nfactors = 1)
+Serbia@data$distance_PC <- pca_solution$scores
+lm(data=Serbia@data, formula = YPLLi17_19~distance_PC+Indeks.društvenog.razvoja+pm25) %>% summary()
+
+
+```
+## Statističko modelovanje
+
+```{r modeli, message=FALSE, warning=FALSE, fig.show='hide', echo=FALSE}
+
+cordata<- Serbia@data %>% select('YPLLi 2017-2019'= YPLLi17_19,'Me Starost YPLL 2017-2019'= MedianAgeYPLL17_19, 'Izbežni YPLLi 2017-2019'=YPLLi20172019avoidable,'Preventabilni YPLLi 2017-2019'= YPLLi20172019preventable, 'Predupredivi YPLLi 2017-2019'=YPLLi20172019amenable, 'SARS-CoV-2 YPLLi 2020'=YPLLiSARS, 'PM25 YPLLi 2017-2019'= YPLLi17_19_PM25, 'Udaljenost I'="distance_from_primary", 'Udaljenost II'= distance_from_secondary,'Udaljenost III'=distance_from_tertiary, "Udaljenost Spec."=distance_from_specialized, "Udaljenost banje"= distance_from_special,"Udaljenost Vojne" =distance_from_military,'Udaljenost javno z.'=distance_from_public_health, 'Glavna komponenta'=distance_PC  )
+
+FactoMineR::PCA(cordata[,8:14] )
+
+cormat<-cordata %>% cor(method = "spearman")
+pmat<- cordata %>% rstatix::cor_pmat(,
+                                     method = "spearman")
+pmat$rowname <- NULL
+rownames(pmat) <- pmat %>% colnames()
+
+#cormat <- reorder_cormat(cormat)
+upper_tri <- get_upper_tri(cormat)
+upper_tri_pmat <- get_upper_tri(pmat)
+# Melt the correlation matrix
+melted_cormat <- reshape2::melt(upper_tri, na.rm = TRUE)
+melted_pmat <- reshape2::melt(upper_tri_pmat, na.rm = TRUE)
+
+melted_cormat$pvalue <- melted_pmat$value
+# Create a ggheatmap
+ggheatmap <- ggplot(melted_cormat, aes(Var2, Var1, fill = value))+
+ geom_tile(color = "white")+
+ scale_fill_gradient2(low = "#1f78b4", high = "#e31a1c", mid = "white",
+   midpoint = 0, limit = c(-1,1), space = "Lab",
+    name="Spirmanov koeficijent\nkorelacije") +
+  theme_tufte()+ # minimal theme
+ theme(axis.text.x = element_text(angle = 45, vjust = 1,
+    size = 12, hjust = 1))+
+ coord_fixed()
+# Print the heatmap
+
+final_cormat2_heatmap<- ggheatmap +
+geom_text(aes(Var2, Var1, label = gsub(pattern = '[.]', replacement = ',',x = round(value,2)),alpha=ifelse(pvalue<0.05, 1,0)), color = "#000000",guide="none", size = 4) +
+theme(
+  axis.title.x = element_blank(),
+  axis.title.y = element_blank(),
+  panel.grid.major = element_blank(),
+  panel.border = element_blank(),
+  panel.background = element_blank(),
+  axis.ticks = element_blank(),
+  legend.justification = c(1, 0),
+  legend.position = c(0.6, 0.7),
+  legend.direction = "horizontal")+
+  guides(fill = guide_colorbar(barwidth = 7, barheight = 1,
+                title.position = "top", title.hjust = 0.5))+ scale_alpha(guide = 'none')
+
+ggsave(final_cormat2_heatmap,
+        filename =  paste0(deparse(substitute(
+          final_cormat_heatmap
+        )), ".png"),
+        units = "mm",
+        width = 200,
+        height = 200,
+        dpi = 600
+      )
+
+## ## ## ## ## ## ## ## ## ## ## ## #
+
+global.model <-  glm(YPLLi17_19~ 
+                       log(Udeo.korisnika.NSP)+ 
+                       distance_PC+ 
+                       pm25+ 
+                       log(Indeks.društvenog.razvoja),
+                     data=Serbia@data) 
+
+sars.model <-  glm(YPLLiSARS~ 
+                       distance_from_secondary+ 
+                       Broj.lekara.na.1000.stanovnika+
+                       pm25+ 
+                       Indeks.društvenog.razvoja,
+                     data=Serbia@data) 
+
+
+#Testiranje različitih modela
+lm(data=Serbia@data, formula = YPLLi17_19 ~  Udeo.korisnika.NSP + distance_PC + pm25 + Indeks.društvenog.razvoja) %>% summary
+lm(data=Serbia@data, formula = YPLLi17_19 ~  Udeo.korisnika.NSP +   pm25:log(distance_PC) + Indeks.društvenog.razvoja) %>% summary
+lm(data=Serbia@data, formula = YPLLi17_19 ~ pm25+distance_PC+Indeks.društvenog.razvoja) %>% summary
+lm(data=Serbia@data, formula = YPLLi17_19 ~ Indeks.društvenog.razvoja+distance_PC:Udeo.korisnika.NSP+pm25:Udeo.korisnika.NSP+Indeks.društvenog.razvoja:Udeo.korisnika.NSP) %>% plot
+lm(data=Serbia@data, formula = YPLLiSARS ~ pm25:Broj.lekara.na.1000.stanovnika + Indeks.društvenog.razvoja:pm25 ) %>% summary
+lm(data=Serbia@data, formula = YPLLiSARS ~ log(Broj.lekara.na.1000.stanovnika) + log(Indeks.društvenog.razvoja )) %>% summary
+lm(data=Serbia@data, formula = YPLLi17_19~1+distance_PC+pm25:distance_PC+Udeo.korisnika.NSP:pm25) %>% summary
+lm(data=Serbia@data, formula = YPLLi17_19~Indeks.društvenog.razvoja+Udeo.korisnika.NSP:distance_PC+Udeo.korisnika.NSP:pm25+Indeks.društvenog.razvoja:Udeo.korisnika.NSP) %>% summary
+lm(data=Serbia@data, formula = YPLLi17_19~Indeks.društvenog.razvoja+Indeks.društvenog.razvoja:Udeo.korisnika.NSP) %>% summary
+lm(data=Serbia@data, formula =YPLLi20172019preventable~1+pm25+distance_PC+distance_PC:pm25+distance_PC2:distance_PC+Indeks.društvenog.razvoja:distance_PC) %>% summary()
+lm(YPLLi20172019avoidable~1+distance_from_tertiary+distance_from_non_primary+distance_from_secondary:distance_from_primary+distance_from_tertiary:distance_from_secondary+distance_from_non_primary:distance_from_primary+distance_from_non_primary:distance_from_tertiary, Serbia@data) %>% summary
+lm(YPLLi20172019avoidable~1+distance_from_tertiary+distance_from_non_primary+distance_from_secondary:distance_from_primary+distance_from_tertiary:distance_from_secondary+distance_from_non_primary:distance_from_primary+distance_from_non_primary:distance_from_tertiary, Serbia@data) %>% summary
+lm(YPLLi20172019avoidable~1+distance_from_secondary:distance_from_primary+distance_from_secondary:distance_from_primary:distance_from_tertiary+Indeks.društvenog.razvoja, Serbia@data) %>% summary
+lm(YPLLi20172019avoidable~pm25:Indeks.društvenog.razvoja, Serbia@data) %>% summary
+lm(YPLLi20172019avoidable~1+distance_from_primary+distance_from_tertiary+distance_from_non_primary+distance_from_tertiary:distance_from_primary+distance_from_tertiary:distance_from_secondary+pm25:distance_from_primary+pm25:distance_from_tertiary+distance_from_non_primary:distance_from_primary+distance_from_non_primary:distance_from_tertiary, Serbia@data) %>% summary
+ lm(data=Serbia@data,YPLLi17_19~Indeks.društvenog.razvoja+distance_PC:Indeks.društvenog.razvoja) %>% summary
+ggplot(data=Serbia@data)+geom_point(aes(x=pm25,y=YPLLi17_19, group=Indeks.društvenog.razvoja))
+
+#Razmatrani modeli
+model1<- lm(data=Serbia@data, formula = YPLLi17_19 ~ Udeo.korisnika.NSP + Indeks.društvenog.razvoja)
+model2<- lm(data=Serbia@data, formula = YPLLi17_19 ~ Udeo.korisnika.NSP + Indeks.društvenog.razvoja + pm25)
+model3<- lm(data=Serbia@data, formula = YPLLi17_19 ~ Udeo.korisnika.NSP + Indeks.društvenog.razvoja + distance_PC)
+model4<- lm(data=Serbia@data, formula = YPLLi17_19 ~ Udeo.korisnika.NSP + distance_PC + pm25 )
+model5<- lm(data=Serbia@data, formula = YPLLi17_19 ~ Udeo.korisnika.NSP + Indeks.društvenog.razvoja + distance_PC + pm25)
+
+
+texreg::htmlreg(list(model1, model2, model3, model4, model5),file='modeli.doc', caption="Statistički modeli",)
+
+
+
+```
 
